@@ -17,13 +17,13 @@ close all
 % %leap years: 2004, 2008, 2012, 2016, 2020
 % 
 % %DOY
-% DOY = 1:1/48:(366-(1/48));
-% DOY_leap = 1:1/48:(367-(1/48));
+ DOY = 1:1/48:(366-(1/48));
+ DOY_leap = 1:1/48:(367-(1/48));
 % %DOY decimal day
-% dec_DOY=DOY./366;
-% dec_DOY_leap=DOY_leap./367;
+ dec_DOY=DOY./366;
+ dec_DOY_leap=DOY_leap./367;
 % %continuous linear day variable
-% linear_day=[(2004.+dec_DOY_leap),(2005+dec_DOY),(2006+dec_DOY),(2007+dec_DOY),(2008+dec_DOY_leap),(2009+dec_DOY),(2010+dec_DOY),(2011+dec_DOY),(2012+dec_DOY_leap),(2013+dec_DOY),(2014+dec_DOY),(2015+dec_DOY),(2016+dec_DOY_leap),(2017+dec_DOY),(2018+dec_DOY),(2019+dec_DOY),(2020+dec_DOY_leap),(2021+dec_DOY),(2022+dec_DOY),(2023+dec_DOY)]';
+  linear_day=[(2004.+dec_DOY_leap),(2005+dec_DOY),(2006+dec_DOY),(2007+dec_DOY),(2008+dec_DOY_leap),(2009+dec_DOY),(2010+dec_DOY),(2011+dec_DOY),(2012+dec_DOY_leap),(2013+dec_DOY),(2014+dec_DOY),(2015+dec_DOY),(2016+dec_DOY_leap),(2017+dec_DOY),(2018+dec_DOY),(2019+dec_DOY),(2020+dec_DOY_leap),(2021+dec_DOY),(2022+dec_DOY),(2023+dec_DOY)]';
 % %WOY
 % WOY = 1:45;
 % dec_WOY=WOY./45;
@@ -66,6 +66,12 @@ two_SRS6_data = standardizeMissing(two_SRS6_data, -9999);
 %make SRS6 table
 SRS6_data = table(linear_day);
 
+
+%date used
+%SRS6_data.Date
+SRS6_data.Date=NaN(350640,1);
+SRS6_data.Date(1:134976)=one_SRS6_data.TIMESTAMP_START;
+SRS6_data.Date(227953:350640)=two_SRS6_data.TIMESTAMP_START;
 
 %SRS6_data.TA
 SRS6_data.TA=NaN(350640,1);
@@ -129,6 +135,7 @@ TS7_data = readtable('C:\Users\der66\Dropbox (YSE)\Yale\FCE projects\ameriflux d
 TS7_data = standardizeMissing(TS7_data, -9999);
 
 % cloning data columns to sync names between sites
+TS7_data.Date=TS7_data.TIMESTAMP_START;
 TS7_data.FC = TS7_data.FC;
 TS7_data.SC = TS7_data.SC;
 TS7_data.NEE = TS7_data.FC+TS7_data.SC;
@@ -142,6 +149,29 @@ TS7_data.linear_day=[(2016+dec_DOY_leap),(2017.+dec_DOY),(2018+dec_DOY),(2019+de
 
 %%%nan count
 %sum(isnan(TS7_data.FC))/(length(TS7_data.FC)-sum(isnan(TS7_data.WS)))
+
+
+
+
+
+
+%%%%%%%%%%%%%%%%%read in ERA5 temperature and radiation data
+ERA5_data = readtable('C:\Users\der66\Dropbox (YSE)\Yale\FCE projects\Everglades Light Response Curves\ERA5 data\ERA5_data_SRS6_LRC.csv','VariableNamingRule','preserve',"TreatAsMissing","NA");
+%%% make datetime variable
+%ERA5_data.Time = datetime(compose("%d",ERA5_data.dates),'InputFormat','yyyyMMddHHmm');
+
+ERA5_data = table2timetable(ERA5_data);
+
+%%% start/end dates
+start_day = ERA5_data.dates(1);
+end_day = ERA5_data.dates(end)+duration(0,30,0);
+time_step = duration(0,30,0);
+time_array = (start_day:time_step:end_day)';
+
+
+%%% interplote ERA5 and FLUX data to hourly
+ERA5_data_30min = retime(ERA5_data, time_array,'linear');
+
 
 
 
@@ -187,11 +217,7 @@ TS7_modis.LAIqc=temp;
 clear temp
 
 
-%LAI stats
-%mean(SRS6_modis.LAIqc,"omitnan")
-%std(SRS6_modis.LAIqc,"omitnan")/sqrt(length(SRS6_modis.LAIqc))
-%mean(TS7_modis.LAIqc,"omitnan")
-%std(TS7_modis.LAIqc,"omitnan")/sqrt(length(TS7_modis.LAIqc))
+
 
 
 
@@ -199,9 +225,17 @@ clear temp
 %%%%% LAI time aggregation work
 
 
+
+
+
 %%% aggregate to 24 day period (aggregate 3 8-day points)
 TT_SRS6 = table2timetable(table(SRS6_modis.Date,SRS6_modis.LAIqc,'VariableNames',["Date","LAIqc"]));
 TT_TS7 = table2timetable(table(TS7_modis.Date,TS7_modis.LAIqc,'VariableNames',["Date","LAIqc"]));
+
+%%%%%% Interpolate 8-day LAI
+SRS6_modis_8day = synchronize(TT_SRS6,SRS6_modis.Date,'linear');
+TS7_modis_8day = synchronize(TT_TS7,TS7_modis.Date,'linear');
+
 
 clear newTimes i
 
@@ -215,6 +249,11 @@ newTimes = reshape(newTimes',[(15*num_years),1]);
 %TT4 = synchronize(TT,newTimes,@nanmean);
 SRS6_modis_24day = synchronize(TT_SRS6,newTimes,@nanmax); %using max LAI over agregating time period
 TS7_modis_24day = synchronize(TT_TS7,newTimes,@nanmax); %using max LAI over agregating time period
+
+%%%%%% Interpolate 24-day LAI
+SRS6_modis_24day = synchronize(SRS6_modis_24day,newTimes,'linear'); %fill missing values with linear interpolation 
+TS7_modis_24day = synchronize(TT_TS7,newTimes,'linear'); %fill missing values with linear interpolation 
+
 
 clear newTimes i
 
@@ -260,15 +299,39 @@ NSRDB_data.TimeStart.Format='yyyyMMddHHmm';
 
 
 
-
-
-
-
 %%%%%% unit converstions
 %convert LE from energy units (W/m-2) to water units (mmole m-2 s-1)
 %latent heat of vapouraztion 40.8 KJ/mol
 SRS6_data.FV=SRS6_data.LE./40.8;
 TS7_data.FV=TS7_data.LE./40.8;
+
+
+
+
+%filter NEE to a range of -100 to 100
+SRS6_data.NEE(SRS6_data.NEE>100) = NaN;
+SRS6_data.NEE(SRS6_data.NEE<-100) = NaN;
+
+TS7_data.NEE(TS7_data.NEE>100) = NaN;
+TS7_data.NEE(TS7_data.NEE<-100) = NaN;
+
+
+
+%%%%%% select nighttime NEE data
+SRS6_data.NEE_night = SRS6_data.NEE;
+SRS6_data.NEE_night(SRS6_data.SW_IN>50) = NaN;
+
+TS7_data.NEE_night = TS7_data.NEE;
+TS7_data.NEE_night(TS7_data.SW_IN>50) = NaN;
+
+
+
+%%%%%% select daytime NEE data
+SRS6_data.NEE_day = SRS6_data.NEE;
+SRS6_data.NEE_day(SRS6_data.SW_IN<50) = NaN;
+
+TS7_data.NEE_day = TS7_data.NEE;
+TS7_data.NEE_day(TS7_data.SW_IN<50) = NaN;
 
 
 
@@ -285,8 +348,8 @@ year_len_lp=17520+48;
 
 %get NSRDB data into 2004-end format
 %NSRDB_data.TimeStart(NSRDB_data.TimeStart>datetime(2004,0,0))
-%NSRDB_data.DNI(NSRDB_data.TimeStart>datetime(2004,0,0))
-NSRDB_data_2004_end = NSRDB_data.DNI(NSRDB_data.TimeStart>datetime(2004,0,0));
+%NSRDB_data.GHI(NSRDB_data.TimeStart>datetime(2004,0,0))
+NSRDB_data_2004_end = NSRDB_data.GHI(NSRDB_data.TimeStart>datetime(2004,0,0));
 %missing data in 2023
 NSRDB_data_2004_end(334416:350256) = nan;
 
@@ -310,6 +373,8 @@ for num_year=1:20
             %SRS6_8day_NetRad(i+45*(num_year-1),j) = SRS6_data.NETRAD(x);
             SRS6_8day_TA(i+45*(num_year-1),j) = SRS6_data.TA(x);
             SRS6_8day_Fc(i+45*(num_year-1),j) = SRS6_data.NEE(x);
+            SRS6_8day_NEE_day(i+45*(num_year-1),j) = SRS6_data.NEE_day(x);
+            SRS6_8day_NEE_night(i+45*(num_year-1),j) = SRS6_data.NEE_night(x);
             SRS6_8day_Fv(i+45*(num_year-1),j) = SRS6_data.FV(x);
             SRS6_8day_SolarIn(i+45*(num_year-1),j) = SRS6_data.SW_IN(x);
             SRS6_8day_linear_day(i+45*(num_year-1),j) = SRS6_data.linear_day(x);
@@ -345,6 +410,8 @@ for num_year=1:8
             %TS7_8day_NetRad(i+45*(num_year-1),j) = TS7_data.NETRAD(x);
             TS7_8day_TA(i+45*(num_year-1),j) = TS7_data.TA(x);
             TS7_8day_Fc(i+45*(num_year-1),j) = TS7_data.NEE(x);
+            TS7_8day_NEE_day(i+45*(num_year-1),j) = TS7_data.NEE_day(x);
+            TS7_8day_NEE_night(i+45*(num_year-1),j) = TS7_data.NEE_night(x);
             TS7_8day_Fv(i+45*(num_year-1),j) = TS7_data.FV(x);
             TS7_8day_SolarIn(i+45*(num_year-1),j) = TS7_data.SW_IN(x);
             TS7_8day_linear_day(i+45*(num_year-1),j) = TS7_data.linear_day(x);
@@ -367,10 +434,14 @@ clear x
 
 %%%% get TS7 back into same timeframe as SRS6
 TS7_8day_Fc_filled = nan(900,384);
+TS7_8day_NEE_day_filled = nan(900,384);
+TS7_8day_NEE_night_filled = nan(900,384);
 TS7_8day_TA_filled = nan(900,384);
 %TS7_8day_LRCmodel_NEP_filled = nan(900,384);
 
 TS7_8day_Fc_filled(541:900,:) = TS7_8day_Fc;
+TS7_8day_NEE_day_filled(541:900,:) = TS7_8day_NEE_day;
+TS7_8day_NEE_night_filled(541:900,:) = TS7_8day_NEE_night;
 TS7_8day_TA_filled(541:900,:) = TS7_8day_TA;
 %TS7_8day_LRCmodel_NEP_filled(541:900,:) = TS7_8day_LRCmodel_NEP;
 
@@ -390,11 +461,14 @@ for num_year=1:20
             %SRS6_24day_NetRad(i+15*(num_year-1),j) = SRS6_data.NETRAD(x);
             SRS6_24day_TA(i+15*(num_year-1),j) = SRS6_data.TA(x);
             SRS6_24day_Fc(i+15*(num_year-1),j) = SRS6_data.NEE(x);
+            SRS6_24day_NEE_day(i+15*(num_year-1),j) = SRS6_data.NEE_day(x);
+            SRS6_24day_NEE_night(i+15*(num_year-1),j) = SRS6_data.NEE_night(x);
             SRS6_24day_Fv(i+15*(num_year-1),j) = SRS6_data.FV(x);
             SRS6_24day_SolarIn(i+15*(num_year-1),j) = SRS6_data.SW_IN(x);
             SRS6_24day_linear_day(i+15*(num_year-1),j) = SRS6_data.linear_day(x);
             SRS6_24day_NSRDB_data(i+15*(num_year-1),j) = NSRDB_data_2004_end(x);
-            SRS6_24day_NSRDB_data(i+15*(num_year-1),j) = NSRDB_data_2004_end(x);
+            SRS6_24day_ERA5_TA(i+15*(num_year-1),j) = ERA5_data_30min.ERA5_2T(x);
+            SRS6_24day_ERA5_SW(i+15*(num_year-1),j) = ERA5_data_30min.ERA5_SW_IN(x);
             %SRS6_8day_LRCmodel_NEP(i+15*(num_year-1),j) = SRS6_LRCmodel_NEP(x);
             x=x+1;
         end
@@ -425,6 +499,8 @@ for num_year=1:8
             %TS7_24day_NetRad(i+41*(num_year-1),j) = TS7_data.NETRAD(x);
             TS7_24day_TA(i+15*(num_year-1),j) = TS7_data.TA(x);
             TS7_24day_Fc(i+15*(num_year-1),j) = TS7_data.NEE(x);
+            TS7_24day_NEE_day(i+15*(num_year-1),j) = TS7_data.NEE_day(x);
+            TS7_24day_NEE_night(i+15*(num_year-1),j) = TS7_data.NEE_night(x);
             TS7_24day_Fv(i+15*(num_year-1),j) = TS7_data.FV(x);
             TS7_24day_SolarIn(i+15*(num_year-1),j) = TS7_data.SW_IN(x);
             TS7_24day_linear_day(i+15*(num_year-1),j) = TS7_data.linear_day(x);
@@ -447,10 +523,14 @@ clear x
 
 %%%% get TS7 back into same timeframe as SRS6
 TS7_24day_Fc_filled = nan(300,1152);
+TS7_24day_NEE_day_filled = nan(300,1152);
+TS7_24day_NEE_night_filled = nan(300,1152);
 TS7_24day_TA_filled = nan(300,1152);
 %TS7_24day_LRCmodel_NEP_filled = nan(300,1152);
 
 TS7_24day_Fc_filled(181:300,:) = TS7_24day_Fc; %8/20 years, 300-(.4*300)
+TS7_24day_NEE_day_filled(181:300,:) = TS7_24day_NEE_day; %8/20 years, 300-(.4*300)
+TS7_24day_NEE_night_filled(181:300,:) = TS7_24day_NEE_night; %8/20 years, 300-(.4*300)
 TS7_24day_TA_filled(181:300,:) = TS7_24day_TA; %8/20 years, 300-(.4*300)
 %TS7_24day_LRCmodel_NEP_filled(541:900,:) = TS7_8day_LRCmodel_NEP;
 
@@ -469,6 +549,8 @@ for num_year=1:20
             %SRS6_40day_NetRad(i+9*(num_year-1),j) = SRS6_data.NETRAD(x);
             SRS6_40day_TA(i+9*(num_year-1),j) = SRS6_data.TA(x);
             SRS6_40day_Fc(i+9*(num_year-1),j) = SRS6_data.NEE(x);
+            SRS6_40day_NEE_day(i+9*(num_year-1),j) = SRS6_data.NEE_day(x);
+            SRS6_40day_NEE_night(i+9*(num_year-1),j) = SRS6_data.NEE_night(x);
             SRS6_40day_Fv(i+9*(num_year-1),j) = SRS6_data.FV(x);
             SRS6_40day_SolarIn(i+9*(num_year-1),j) = SRS6_data.SW_IN(x);
             SRS6_40day_linear_day(i+9*(num_year-1),j) = SRS6_data.linear_day(x);
@@ -504,6 +586,8 @@ for num_year=1:8
             %TS7_40day_NetRad(i+9*(num_year-1),j) = TS7_data.NETRAD(x);
             TS7_40day_TA(i+9*(num_year-1),j) = TS7_data.TA(x);
             TS7_40day_Fc(i+9*(num_year-1),j) = TS7_data.NEE(x);
+            TS7_40day_NEE_day(i+9*(num_year-1),j) = TS7_data.NEE_day(x);
+            TS7_40day_NEE_night(i+9*(num_year-1),j) = TS7_data.NEE_night(x);
             TS7_40day_Fv(i+9*(num_year-1),j) = TS7_data.FV(x);
             TS7_40day_SolarIn(i+9*(num_year-1),j) = TS7_data.SW_IN(x);
             TS7_40day_linear_day(i+9*(num_year-1),j) = TS7_data.linear_day(x);
@@ -526,10 +610,14 @@ clear x
 
 %%%% get TS7 back into same timeframe as SRS6
 TS7_40day_Fc_filled = nan(180,1920);
+TS7_40day_NEE_day_filled = nan(180,1920);
+TS7_40day_NEE_night_filled = nan(180,1920);
 TS7_40day_TA_filled = nan(180,1920);
 %TS7_8day_LRCmodel_NEP_filled = nan(900,384);
 
 TS7_40day_Fc_filled(109:180,:) = TS7_40day_Fc; %8/20 years, 180-(.4*180)
+TS7_40day_NEE_day_filled(109:180,:) = TS7_40day_NEE_day; %8/20 years, 180-(.4*180)
+TS7_40day_NEE_night_filled(109:180,:) = TS7_40day_NEE_night; %8/20 years, 180-(.4*180)
 TS7_40day_TA_filled(109:180,:) = TS7_40day_TA; %8/20 years, 180-(.4*180)
 %TS7_8day_LRCmodel_NEP_filled(541:900,:) = TS7_8day_LRCmodel_NEP;
 
@@ -549,24 +637,32 @@ for i=1:900
         SRS6_8day_SolarIn_dayave(i,j) = mean(SRS6_8day_SolarIn(i,j:48:384),'omitnan');
         SRS6_8day_NSRDB_data_dayave(i,j) = mean(SRS6_8day_NSRDB_data(i,j:48:384),'omitnan');
         SRS6_8day_NEE_dayave(i,j) = mean(SRS6_8day_Fc(i,j:48:384),'omitnan');
+        SRS6_8day_NEE_day_dayave(i,j) = mean(SRS6_8day_NEE_day(i,j:48:384),'omitnan');
+        SRS6_8day_NEE_night_dayave(i,j) = mean(SRS6_8day_NEE_night(i,j:48:384),'omitnan');
         SRS6_8day_TA_dayave(i,j) = mean(SRS6_8day_TA(i,j:48:384),'omitnan');
         %SRS6_8day_LRCmodel_NEP_dayave(i,j) = mean(SRS6_8day_LRCmodel_NEP(i,j:48:384),'omitnan');
 
         TS7_8day_NEE_dayave(i,j) = mean(TS7_8day_Fc_filled(i,j:48:384),'omitnan');
+        TS7_8day_NEE_day_dayave(i,j) = mean(TS7_8day_NEE_day_filled(i,j:48:384),'omitnan');
+        TS7_8day_NEE_night_dayave(i,j) = mean(TS7_8day_NEE_night_filled(i,j:48:384),'omitnan');
         %TS7_8day_LRCmodel_NEP_dayave(i,j) = mean(TS7_8day_LRCmodel_NEP_filled(i,j:48:384),'omitnan');
     end
     SRS6_8day_SolarIn_dailyave(i) = mean(SRS6_8day_SolarIn_dayave(i,:),'omitnan');
     SRS6_8day_NSRDB_data_dailyave(i) = mean(SRS6_8day_NSRDB_data_dayave(i,:),'omitnan');
     SRS6_8day_NEE_dailyave(i) = mean(SRS6_8day_NEE_dayave(i,:),'omitnan');
+    SRS6_8day_NEE_day_dailyave(i) = mean(SRS6_8day_NEE_day_dayave(i,:),'omitnan');
+    SRS6_8day_NEE_night_dailyave(i) = mean(SRS6_8day_NEE_night_dayave(i,:),'omitnan');
     SRS6_8day_TA_dailyave(i) = mean(SRS6_8day_TA_dayave(i,:),'omitnan');
     %SRS6_8day_LRCmodel_NEP_dailyave(i) = mean(SRS6_8day_LRCmodel_NEP_dayave(i,:),'omitnan');
 
     TS7_8day_NEE_dailyave(i) = mean(TS7_8day_NEE_dayave(i,:),'omitnan');
+    TS7_8day_NEE_day_dailyave(i) = mean(TS7_8day_NEE_day_dayave(i,:),'omitnan');
+    TS7_8day_NEE_night_dailyave(i) = mean(TS7_8day_NEE_night_dayave(i,:),'omitnan');
     %TS7_8day_LRCmodel_NEP_dailyave(i) = mean(TS7_8day_LRCmodel_NEP_dayave(i,:),'omitnan');
 end
 
 
-clear i j SRS6_8day_SolarIn_dayave SRS6_8day_NSRDB_data_dayav SRS6_8day_NEE_dayave SRS6_8day_LRCmodel_NEP_dayave TS7_8day_NEE_dayave TS7_8day_LRCmodel_NEP_dayave
+clear i j SRS6_8day_SolarIn_dayave SRS6_8day_NSRDB_data_dayav SRS6_8day_NEE_dayave SRS6_8day_NEE_day_dayave SRS6_8day_NEE_night_dayave SRS6_8day_LRCmodel_NEP_dayave TS7_8day_NEE_dayave TS7_8day_NEE_day_dayave TS7_8day_NEE_night_dayave TS7_8day_LRCmodel_NEP_dayave
 
 
 
@@ -579,25 +675,39 @@ for i=1:300
         SRS6_24day_SolarIn_dayave(i,j) = mean(SRS6_24day_SolarIn(i,j:48:1152),'omitnan');
         SRS6_24day_NSRDB_data_dayave(i,j) = mean(SRS6_24day_NSRDB_data(i,j:48:1152),'omitnan');
         SRS6_24day_NEE_dayave(i,j) = mean(SRS6_24day_Fc(i,j:48:1152),'omitnan');
+        SRS6_24day_NEE_day_dayave(i,j) = mean(SRS6_24day_NEE_day(i,j:48:1152),'omitnan');
+        SRS6_24day_NEE_night_dayave(i,j) = mean(SRS6_24day_NEE_night(i,j:48:1152),'omitnan');
         SRS6_24day_TA_dayave(i,j) = mean(SRS6_24day_TA(i,j:48:1152),'omitnan');
+        SRS6_24day_ERA5_TA_dayave(i,j) = mean(SRS6_24day_ERA5_TA(i,j:48:1152),'omitnan');
+        SRS6_24day_ERA5_SW_dayave(i,j) = mean(SRS6_24day_ERA5_SW(i,j:48:1152),'omitnan');
         %SRS6_24day_LRCmodel_NEP_dayave(i,j) = mean(SRS6_8day_LRCmodel_NEP(i,j:48:1152),'omitnan');
 
+        TS7_24day_TA_dayave(i,j) = mean(TS7_24day_TA_filled(i,j:48:1152),'omitnan');
         TS7_24day_NEE_dayave(i,j) = mean(TS7_24day_Fc_filled(i,j:48:1152),'omitnan');
+        TS7_24day_NEE_day_dayave(i,j) = mean(TS7_24day_NEE_day_filled(i,j:48:1152),'omitnan');
+        TS7_24day_NEE_night_dayave(i,j) = mean(TS7_24day_NEE_night_filled(i,j:48:1152),'omitnan');
         %TS7_24day_LRCmodel_NEP_dayave(i,j) = mean(TS7_24day_LRCmodel_NEP_filled(i,j:48:1152),'omitnan');
     end
     SRS6_24day_SolarIn_dailyave(i) = mean(SRS6_24day_SolarIn_dayave(i,:),'omitnan');
     SRS6_24day_NSRDB_data_dailyave(i) = mean(SRS6_24day_NSRDB_data_dayave(i,:),'omitnan');
     SRS6_24day_NEE_dailyave(i) = mean(SRS6_24day_NEE_dayave(i,:),'omitnan');
+    SRS6_24day_NEE_day_dailyave(i) = mean(SRS6_24day_NEE_day_dayave(i,:),'omitnan');
+    SRS6_24day_NEE_night_dailyave(i) = mean(SRS6_24day_NEE_night_dayave(i,:),'omitnan');
     SRS6_24day_TA_dailyave(i) = mean(SRS6_24day_TA_dayave(i,:),'omitnan');
+    SRS6_24day_ERA5_TA_dailyave(i) = mean(SRS6_24day_ERA5_TA_dayave(i,:),'omitnan');
+    SRS6_24day_ERA5_TSW_dailyave(i) = mean(SRS6_24day_ERA5_SW_dayave(i,:),'omitnan');
     %SRS6_24day_LRCmodel_NEP_dailyave(i) = mean(SRS6_24day_LRCmodel_NEP_dayave(i,:),'omitnan');
 
+    TS7_24day_TA_dailyave(i) = mean(TS7_24day_TA_dayave(i,:),'omitnan');
     TS7_24day_NEE_dailyave(i) = mean(TS7_24day_NEE_dayave(i,:),'omitnan');
+    TS7_24day_NEE_day_dailyave(i) = mean(TS7_24day_NEE_day_dayave(i,:),'omitnan');
+    TS7_24day_NEE_day_dailyave(i) = mean(TS7_24day_NEE_night_dayave(i,:),'omitnan');
     %TS7_24day_LRCmodel_NEP_dailyave(i) = mean(TS7_24day_LRCmodel_NEP_dayave(i,:),'omitnan');
 end
 
 
-clear i j SRS6_24day_SolarIn_dayave SRS6_24day_NSRDB_data_dayav SRS6_24day_NEE_dayave SRS6_24day_LRCmodel_NEP_dayave TS7_24day_NEE_dayave TS7_24day_LRCmodel_NEP_dayave
-
+clear i j SRS6_24day_SolarIn_dayave SRS6_24day_NSRDB_data_dayav SRS6_24day_NEE_dayave SRS6_24day_NEE_day_dayave SRS6_24day_NEE_night_dayave SRS6_24day_LRCmodel_NEP_dayave TS7_24day_NEE_dayave TS7_24day_NEE_day_dayave TS7_24day_NEE_night_dayave TS7_24day_LRCmodel_NEP_dayave
+clear TS7_24day_TA_dayave SRS6_24day_ERA5_TA_dayave SRS6_24day_ERA5_SW_dayave
 
 
 
@@ -616,16 +726,16 @@ clear i j SRS6_24day_SolarIn_dayave SRS6_24day_NSRDB_data_dayav SRS6_24day_NEE_d
 %%%%%%%%%% 8 day aggregation
 %%%%%%% SRS6 site
 
-SRS6_8day_beta_MM=NaN(900,4); %number of weeks in dataset
+SRS6_8day_beta_MM=NaN(900,3); %number of weeks in dataset
 
 for i=1:900   %loop over all weeks
     
     %using solar_in for light response curve (net rad goofs up Reco)
     
-    if sum(isnan(SRS6_8day_SolarIn(i,:))) > 150 || sum(isnan(SRS6_8day_Fc(i,:))) > 150   %150 is ~40 % (48*8*.4) 
+    if sum(isnan(SRS6_8day_SolarIn(i,:))) > 150 || sum(isnan(SRS6_8day_NEE_day(i,:))) > 300   %300 is ~40 % (48*8*.4*2(for day data)) 
         SRS6_8day_beta_MM(i,:)=NaN;
     else
-        [SRS6_8day_beta_MM(i,:),a,b] = MichaelisMenten(SRS6_8day_SolarIn(i,:),SRS6_8day_Fc(i,:));
+        [SRS6_8day_beta_MM(i,:),a,b] = MichaelisMenten(SRS6_8day_SolarIn(i,:),SRS6_8day_NEE_day(i,:));
     end
         
 end
@@ -634,16 +744,16 @@ end
 
 %%%%%%% TS7 site
 
-TS7_8day_beta_MM=NaN(900,4); % 360 number of weeks in dataset
+TS7_8day_beta_MM=NaN(900,3); % 360 number of weeks in dataset
 
 for i=541:900   %for i=1:315   %loop over all weeks  %540 is last 8 yr at ts7 /20 yr total, 900-(.4*900)
     
     %using solar_in for light response curve (net rad goofs up Reco)
     
-    if sum(isnan(TS7_8day_SolarIn(i-540,:))) > 150 || sum(isnan(TS7_8day_Fc(i-540,:))) > 150  %150 is ~40 % (48*24*.4) 
+    if sum(isnan(TS7_8day_SolarIn(i-540,:))) > 150 || sum(isnan(TS7_8day_NEE_day(i-540,:))) > 300  %300 is ~40 % (48*8*.4*2(for day data)) 
         TS7_8day_beta_MM(i,:)=NaN;
     else
-        [TS7_8day_beta_MM(i,:),a,b] = MichaelisMenten(TS7_8day_SolarIn(i-540,:),TS7_8day_Fc(i-540,:));  %540 is last 8 yr at ts7 /20 yr total, 900-(.4*900)
+        [TS7_8day_beta_MM(i,:),a,b] = MichaelisMenten(TS7_8day_SolarIn(i-540,:),TS7_8day_NEE_day(i-540,:));  %540 is last 8 yr at ts7 /20 yr total, 900-(.4*900)
     end
     
 end
@@ -654,16 +764,16 @@ end
 %%%%%%%%%% 24 day aggregation
 %%%%%%% SRS6 site
 
-SRS6_24day_beta_MM=NaN(300,4); %number of weeks in dataset
+SRS6_24day_beta_MM=NaN(300,3); %number of weeks in dataset
 
 for i=1:300   %loop over all weeks
     
     %using solar_in for light response curve (net rad goofs up Reco)
     
-    if sum(isnan(SRS6_24day_SolarIn(i,:))) > 960 || sum(isnan(SRS6_24day_Fc(i,:))) > 960   %(48*24-4*48) needs at least four days of data
+    if sum(isnan(SRS6_24day_SolarIn(i,:))) > 960 || sum(isnan(SRS6_24day_NEE_day(i,:))) > 960   %(48*24-4*48)*2 needs at least four days of data
         SRS6_24day_beta_MM(i,:)=NaN;
     else
-        [SRS6_24day_beta_MM(i,:),a,b] = MichaelisMenten(SRS6_24day_SolarIn(i,:),SRS6_24day_Fc(i,:));
+        [SRS6_24day_beta_MM(i,:),a,b] = MichaelisMenten(SRS6_24day_SolarIn(i,:),SRS6_24day_NEE_day(i,:));
     end
         
 end
@@ -672,16 +782,16 @@ end
 
 %%%%%%% TS7 site
 
-TS7_24day_beta_MM=NaN(300,4); % 360 number of weeks in dataset
+TS7_24day_beta_MM=NaN(300,3); % 360 number of weeks in dataset
 
 for i=181:300   %for i=1:315   %loop over all weeks  %180 is last 8 yr at ts7 /20 yr total, 300-(.4*300)
     
     %using solar_in for light response curve (net rad goofs up Reco)
     
-    if sum(isnan(TS7_24day_SolarIn(i-180,:))) > 960 || sum(isnan(TS7_24day_Fc(i-180,:))) > 960  %(48*24-4*48) needs at least four days of data
+    if sum(isnan(TS7_24day_SolarIn(i-180,:))) > 960 || sum(isnan(TS7_24day_NEE_day(i-180,:))) > 960   %(48*24-4*48)*2 needs at least four days of data
         TS7_24day_beta_MM(i,:)=NaN;
     else
-        [TS7_24day_beta_MM(i,:),a,b] = MichaelisMenten(TS7_24day_SolarIn(i-180,:),TS7_24day_Fc(i-180,:));  %180 is last 8 yr at ts7 /20 yr total, 300-(.4*300)
+        [TS7_24day_beta_MM(i,:),a,b] = MichaelisMenten(TS7_24day_SolarIn(i-180,:),TS7_24day_NEE_day(i-180,:));  %180 is last 8 yr at ts7 /20 yr total, 300-(.4*300)
     end
     
 end
@@ -692,16 +802,16 @@ end
 %%%%%%%%%% 40 day aggregation
 %%%%%%% SRS6 site
 
-SRS6_40day_beta_MM=NaN(180,4); %number of weeks in dataset
+SRS6_40day_beta_MM=NaN(180,3); %number of weeks in dataset
 
 for i=1:180   %loop over all weeks
     
     %using solar_in for light response curve (net rad goofs up Reco)
     
-    if sum(isnan(SRS6_40day_SolarIn(i,:))) > 1728 || sum(isnan(SRS6_40day_Fc(i,:))) > 1728   %(48*40-4*48)
+    if sum(isnan(SRS6_40day_SolarIn(i,:))) > 1728 || sum(isnan(SRS6_40day_NEE_day(i,:))) > 1728   %(48*40-4*48)*2
         SRS6_40day_beta_MM(i,:)=NaN;
     else
-        [SRS6_40day_beta_MM(i,:),a,b] = MichaelisMenten(SRS6_40day_SolarIn(i,:),SRS6_40day_Fc(i,:));
+        [SRS6_40day_beta_MM(i,:),a,b] = MichaelisMenten(SRS6_40day_SolarIn(i,:),SRS6_40day_NEE_day(i,:));
     end
         
 end
@@ -710,16 +820,16 @@ end
 
 %%%%%%% TS7 site
 
-TS7_40day_beta_MM=NaN(180,4); % 360 number of weeks in dataset
+TS7_40day_beta_MM=NaN(180,3); % 360 number of weeks in dataset
 
 for i=109:180   %for i=1:315   %loop over all weeks  %180 is last 8 yr at ts7 /20 yr total, 180-(.4*180)
     
     %using solar_in for light response curve (net rad goofs up Reco)
     
-    if sum(isnan(TS7_40day_SolarIn(i-108,:))) > 1440 || sum(isnan(TS7_40day_Fc(i-108,:))) > 1440   %(48*40-4*48)
+    if sum(isnan(TS7_40day_SolarIn(i-108,:))) > 1728 || sum(isnan(TS7_40day_NEE_day(i-108,:))) > 1728   %(48*40-4*48)*2
         TS7_40day_beta_MM(i,:)=NaN;
     else
-        [TS7_40day_beta_MM(i,:),a,b] = MichaelisMenten(TS7_40day_SolarIn(i-108,:),TS7_40day_Fc(i-108,:));  %180 is last 8 yr at ts7 /20 yr total, 180-(.4*180)
+        [TS7_40day_beta_MM(i,:),a,b] = MichaelisMenten(TS7_40day_SolarIn(i-108,:),TS7_40day_NEE_day(i-108,:));  %180 is last 8 yr at ts7 /20 yr total, 180-(.4*180)
     end
     
 end
@@ -727,8 +837,78 @@ end
 
 
 
+%%%%%%%%%%%%%%%%%%%%% run TRC model
+% TRC NEP paraments
+%beta =
+%rb(1)
+%E0(2)
 
 
+
+%%%%%%% SRS6 site
+
+SRS6_24day_beta_TRC=NaN(300,2); %number of weeks in dataset
+
+for i=1:300   %loop over all weeks
+    
+    
+    if sum(isnan(SRS6_24day_TA(i,:))) > 960 || sum(isnan(SRS6_24day_NEE_night(i,:))) > 960
+        SRS6_24day_beta_TRC(i,:)=NaN;
+    else
+        [SRS6_24day_beta_TRC(i,:),a,b] = TempResponseCurve(SRS6_24day_TA(i,:),SRS6_24day_NEE_night(i,:));
+    end 
+end
+
+
+%%%%%%% TS7 site
+
+TS7_24day_beta_TRC=NaN(300,2); % 360 number of weeks in dataset
+
+for i=181:300   %for i=1:315   %loop over all weeks
+    
+    if sum(isnan(TS7_24day_TA(i-180,:))) > 960 || sum(isnan(TS7_24day_NEE_night(i-180,:))) > 960
+        TS7_24day_beta_TRC(i,:)=NaN;
+    else
+        [TS7_24day_beta_TRC(i,:),a,b] = TempResponseCurve(TS7_24day_TA(i-180,:),TS7_24day_NEE_night(i-180,:));
+    end
+end
+
+
+
+
+
+
+
+
+
+
+
+
+%LAI stats
+%mean(SRS6_modis.LAIqc,"omitnan")
+%std(SRS6_modis.LAIqc,"omitnan")/sqrt(length(SRS6_modis.LAIqc))
+%mean(TS7_modis.LAIqc,"omitnan")
+%std(TS7_modis.LAIqc,"omitnan")/sqrt(length(TS7_modis.LAIqc))
+
+
+mean(SRS6_8day_beta_MM(:,1),"omitnan")
+std(SRS6_8day_beta_MM(:,1),"omitnan")/sqrt(length(SRS6_8day_beta_MM(:,1)))
+
+mean(SRS6_8day_beta_MM(:,2),"omitnan")
+std(SRS6_8day_beta_MM(:,2),"omitnan")/sqrt(length(SRS6_8day_beta_MM(:,2)))
+
+mean(SRS6_8day_beta_MM(:,3),"omitnan")
+std(SRS6_8day_beta_MM(:,3),"omitnan")/sqrt(length(SRS6_8day_beta_MM(:,3)))
+
+
+mean(TS7_8day_beta_MM(:,1),"omitnan")
+std(TS7_8day_beta_MM(:,1),"omitnan")/sqrt(length(TS7_8day_beta_MM(:,1)))
+
+mean(TS7_8day_beta_MM(:,2),"omitnan")
+std(TS7_8day_beta_MM(:,2),"omitnan")/sqrt(length(TS7_8day_beta_MM(:,2)))
+
+mean(TS7_8day_beta_MM(:,3),"omitnan")
+std(TS7_8day_beta_MM(:,3),"omitnan")/sqrt(length(TS7_8day_beta_MM(:,3)))
 
 
 %%%%%%%% creating indexs for disturbance/non-disturbance years %%wet/dry years
@@ -809,8 +989,6 @@ irma_fouryear_ind = and(SRS6_modis_24day.Date>irma_date,SRS6_modis_24day.Date<ir
 
 
 %%%%%%%%%%%%%%%% LRC parameters models
-
-
 
 %core model variables
 
@@ -926,10 +1104,10 @@ mdl3_40day = fitnlm(X_40day,y3_40day, modelfun3, beta03,'CoefficientNames',{'Exp
  
 
 %output data
-% mdl3.Coefficients.Estimate
-% mdl3.Coefficients.SE
+% mdl3_24day.Coefficients.Estimate
+% mdl3_24day.Coefficients.SE
 % 
-% [mdl3_24day.Coefficients.Estimate-(1.96.*mdl3_24day.Coefficients.SE),mdl3_24day.Coefficients.Estimate+(1.96.*mdl3_24day.Coefficients.SE)]
+% [mdl1_24day.Coefficients.Estimate-(1.96.*mdl1_24day.Coefficients.SE),mdl1_24day.Coefficients.Estimate+(1.96.*mdl1_24day.Coefficients.SE)]
 % 
 % 
 % coefficients = mdl1.Coefficients{:, 'Estimate'}
@@ -943,6 +1121,119 @@ mdl3_40day = fitnlm(X_40day,y3_40day, modelfun3, beta03,'CoefficientNames',{'Exp
 % tbl = table(ecosystem_LAI,ecosystem_MM_1,ecosystem_MM_2,ecosystem_MM_3)
 % tbl.Properties.VariableNames = ["LAI","Reco","QY","Amax"]
 % corrplot(tbl,Type="Pearson",TestR="on")
+
+
+
+
+
+
+
+%%%%%%%%%%%%%%%% TRC parameters models
+% TRC NEP paraments
+%beta =
+%rb(1)
+%E0(2)
+
+%core model variables
+
+%ecosystem_LAI_8day = cat(1,TS7_modis.LAIqc,SRS6_modis.LAIqc);
+%ecosystem_MM_1_8day = cat(1,TS7_8day_beta_MM(:,1),SRS6_8day_beta_MM(:,1));
+%ecosystem_MM_2_8day = cat(1,TS7_8day_beta_MM(:,2),SRS6_8day_beta_MM(:,2));
+%ecosystem_MM_3_8day = cat(1,TS7_8day_beta_MM(:,3),SRS6_8day_beta_MM(:,3));
+%ecosystem_TA_8day = cat(1,mean(TS7_8day_TA_filled,2,'omitnan'),mean(SRS6_8day_TA,2,'omitnan'));
+
+ecosystem_LAI_24day = cat(1,TS7_modis_24day.LAIqc,SRS6_modis_24day.LAIqc);
+ecosystem_TRC_1_24day = cat(1,TS7_24day_beta_TRC(:,1),SRS6_24day_beta_TRC(:,1));
+ecosystem_TRC_2_24day = cat(1,TS7_24day_beta_TRC(:,2),SRS6_24day_beta_TRC(:,2));
+ecosystem_TA_24day = cat(1,mean(TS7_24day_TA_filled,2,'omitnan'),mean(SRS6_24day_TA,2,'omitnan'));
+
+%ecosystem_LAI_40day = cat(1,TS7_modis_40day.LAIqc,SRS6_modis_40day.LAIqc);
+%ecosystem_MM_1_40day = cat(1,TS7_40day_beta_MM(:,1),SRS6_40day_beta_MM(:,1));
+%ecosystem_MM_2_40day = cat(1,TS7_40day_beta_MM(:,2),SRS6_40day_beta_MM(:,2));
+%ecosystem_MM_3_40day = cat(1,TS7_40day_beta_MM(:,3),SRS6_40day_beta_MM(:,3));
+%ecosystem_TA_40day = cat(1,mean(TS7_40day_TA_filled,2,'omitnan'),mean(SRS6_40day_TA,2,'omitnan'));
+
+
+
+%making dummy var for year
+
+%time_since_dis_facter_8day = zeros(1800,1);   % ds on index 82 and 617
+%time_since_dis_facter_8day(82:(81+(45*4)))=1:(45*4);
+%time_since_dis_facter_8day(617:(616+(45*4)))=1:(45*4);
+%time_since_dis_facter_8day((82+900):((81+900)+(45*4)))=1:(45*4);
+%time_since_dis_facter_8day((617+900):((616+900)+(45*4)))=1:(45*4);
+
+time_since_dis_facter_24day = zeros(600,1); % ds on index 28 and 206
+time_since_dis_facter_24day(28:(27+(15*4)))=1:(15*4);
+time_since_dis_facter_24day(206:(205+(15*4)))=1:(15*4);
+time_since_dis_facter_24day((28+300):((27+300)+(15*4)))=1:(15*4);
+time_since_dis_facter_24day((206+300):((205+300)+(15*4)))=1:(15*4);
+
+%time_since_dis_facter_40day = zeros(360,1); % ds on index 28 and 206
+%time_since_dis_facter_40day(17:(16+(9*4)))=1:(9*4);
+%time_since_dis_facter_40day(124:(123+(9*4)))=1:(9*4);
+%time_since_dis_facter_40day((17+180):((16+180)+(9*4)))=1:(9*4);
+%time_since_dis_facter_40day((124+180):((123+180)+(9*4)))=1:(9*4);
+
+
+
+
+%non_ds_factor= ~(temp1+temp2+temp3+temp4);
+
+%TS7_factor_8day=cat(1,zeros(900,1),ones(900,1));
+%SRS6_factor_8day=cat(1,ones(900,1),zeros(900,1));
+
+TS7_factor_24day=cat(1,zeros(300,1),ones(300,1));
+SRS6_factor_24day=cat(1,ones(300,1),zeros(300,1));
+
+%TS7_factor_40day=cat(1,zeros(180,1),ones(180,1));
+%SRS6_factor_40day=cat(1,ones(180,1),zeros(180,1));
+
+
+
+
+%X_8day = [ecosystem_LAI_8day,time_since_dis_facter_8day,SRS6_factor_8day,ecosystem_TA_8day];
+%y1_8day = ecosystem_TRC_1_8day;
+%y2_8day = ecosystem_TRC_2_8day;
+
+
+X_24day = [ecosystem_LAI_24day,time_since_dis_facter_24day,SRS6_factor_24day];
+y1_24day = ecosystem_TRC_1_24day;
+y2_24day = ecosystem_TRC_2_24day;
+
+%_40day = [ecosystem_LAI_40day,time_since_dis_facter_40day,SRS6_factor_40day,ecosystem_TA_40day];
+%y1_40day = ecosystem_TRC_1_40day;
+%y2_40day = ecosystem_TRC_2_40day;
+
+
+%models with four factors
+modelfun1 = @(b,x) b(1)*x(:,2) + b(2)*x(:,3) + b(3);
+modelfun2 = @(b,x) exp(b(1)*x(:,1)) + b(2)*x(:,3) + b(3);
+modelfun3 = @(b,x) b(1)*x(:,3) + b(2)*x(:,4) + b(3);
+
+
+beta01 = [1,1,1];
+beta02 = [1,1,1];
+
+
+mdl1_TRC_24day = fitnlm(X_24day,y1_24day, modelfun1, beta01,'CoefficientNames',{'Time','Structure','Intercept'})
+mdl2_TRC_24day = fitnlm(X_24day,y2_24day, modelfun2, beta02,'CoefficientNames',{'Exp(LAI)','Structure','Intercept'})
+
+
+
+%output data
+% mdl1_TRC_24day.Coefficients.Estimate
+% mdl1_TRC_24day.Coefficients.SE
+% 
+% [mdl1_TRC_24day.Coefficients.Estimate-(1.96.*mdl1_TRC_24day.Coefficients.SE),mdl1_TRC_24day.Coefficients.Estimate+(1.96.*mdl1_TRC_24day.Coefficients.SE)]
+
+
+
+
+
+
+
+
 
 
 
@@ -1067,13 +1358,13 @@ legend('LAI','Reco','QY','Amax','location','southeast')
 
 
 
-
-
 % NEP calc using mdl results
 %NEE   =    (  (QY*Amax*NetRad) / (QY*NetRad + Amax)   ) - reco
 %NEP = -NEE
 
-X = [ecosystem_LAI_24day,time_since_dis_facter_24day,SRS6_factor_24day,ecosystem_TA_24day];
+ecosystem_ERA5_TA_24day = cat(1,mean(SRS6_24day_ERA5_TA,2,'omitnan'),mean(SRS6_24day_ERA5_TA,2,'omitnan'));
+
+X = [ecosystem_LAI_24day,time_since_dis_facter_24day,SRS6_factor_24day,ecosystem_ERA5_TA_24day];
 
 SRS6_LRCmodel_Amax = predict(mdl3_24day,X(301:600,:));
 SRS6_LRCmodel_QY = mean(ecosystem_MM_2_24day(301:600),'omitnan');
@@ -1083,11 +1374,21 @@ TS7_LRCmodel_Amax = predict(mdl3_24day,X(1:300,:));
 TS7_LRCmodel_QY = mean(ecosystem_MM_2_24day(1:300),'omitnan');
 TS7_LRCmodel_Reco = predict(mdl1_24day,X(1:300,:));
 
-
+clear X
 
 %SRS6_LRCmodel_NEP = SRS6_LRCmodel_Amax.*SRS6_LRCmodel_QY.*SRS6_24day_NSRDB_data_dailyave'./(SRS6_LRCmodel_Amax + SRS6_LRCmodel_QY.*SRS6_24day_NSRDB_data_dailyave') - SRS6_LRCmodel_Reco;
 %TS7_LRCmodel_NEP = TS7_LRCmodel_Amax.*TS7_LRCmodel_QY.*SRS6_24day_NSRDB_data_dailyave'./(TS7_LRCmodel_Amax + TS7_LRCmodel_QY.*SRS6_24day_NSRDB_data_dailyave') - TS7_LRCmodel_Reco;
 
+
+X= [ecosystem_LAI_24day,time_since_dis_facter_24day,SRS6_factor_24day];
+
+SRS6_TRCmodel_rb = predict(mdl1_TRC_24day,X(301:600,:));
+SRS6_TRCmodel_Eo = mean(ecosystem_TRC_2_24day(301:600),'omitnan');
+
+TS7_TRCmodel_rb = predict(mdl1_TRC_24day,X(1:300,:));
+TS7_TRCmodel_Eo = mean(ecosystem_TRC_2_24day(1:300),'omitnan');
+
+clear X
 
 
 
@@ -1101,11 +1402,27 @@ for num_year=1:20
     for i=1:15   %15 24-day groups (weeks) in each year
         for j=1:1152   %time series along group i (1152 30-min data in 24 days)
 
-            SRS6_LRCmodel_NEP_30min(x) = SRS6_LRCmodel_Amax(i+15*(num_year-1)).*SRS6_LRCmodel_QY.*NSRDB_data_2004_end(x)'./(SRS6_LRCmodel_Amax(i+15*(num_year-1)) + SRS6_LRCmodel_QY.*NSRDB_data_2004_end(x)') - SRS6_LRCmodel_Reco(i+15*(num_year-1));
-            TS7_LRCmodel_NEP_30min(x) = TS7_LRCmodel_Amax(i+15*(num_year-1)).*TS7_LRCmodel_QY.*NSRDB_data_2004_end(x)'./(TS7_LRCmodel_Amax(i+15*(num_year-1)) + TS7_LRCmodel_QY.*NSRDB_data_2004_end(x)') - TS7_LRCmodel_Reco(i+15*(num_year-1));
+            SRS6_LRCmodel_NEP_30min(x) = SRS6_LRCmodel_Amax(i+15*(num_year-1)).*SRS6_LRCmodel_QY.*ERA5_data_30min.ERA5_SW_IN(x)'./(SRS6_LRCmodel_Amax(i+15*(num_year-1)) + SRS6_LRCmodel_QY.*ERA5_data_30min.ERA5_SW_IN(x)') - SRS6_LRCmodel_Reco(i+15*(num_year-1));
+            TS7_LRCmodel_NEP_30min(x) = TS7_LRCmodel_Amax(i+15*(num_year-1)).*TS7_LRCmodel_QY.*ERA5_data_30min.ERA5_SW_IN(x)'./(TS7_LRCmodel_Amax(i+15*(num_year-1)) + TS7_LRCmodel_QY.*ERA5_data_30min.ERA5_SW_IN(x)') - TS7_LRCmodel_Reco(i+15*(num_year-1));
             
             SRS6_24day_LRCmodel_NEP(i+15*(num_year-1),j) = SRS6_LRCmodel_NEP_30min(x);
             TS7_24day_LRCmodel_NEP(i+15*(num_year-1),j) = TS7_LRCmodel_NEP_30min(x);
+
+
+            SRS6_TRCmodel_Reco_30min(x) = SRS6_TRCmodel_rb(i+15*(num_year-1),1).*exp(SRS6_TRCmodel_Eo.*((1./(15--46.02)-(1./(ERA5_data_30min.ERA5_2T(x)'--46.02)))));
+            TS7_TRCmodel_Reco_30min(x) = TS7_TRCmodel_rb(i+15*(num_year-1),1).*exp(TS7_TRCmodel_Eo.*((1./(15--46.02)-(1./(ERA5_data_30min.ERA5_2T(x)'--46.02)))));
+
+            SRS6_24day_TRCmodel_Reco(i+15*(num_year-1),j) = SRS6_TRCmodel_Reco_30min(x);
+            TS7_24day_TRCmodel_Reco(i+15*(num_year-1),j) = TS7_TRCmodel_Reco_30min(x);
+
+
+            SRS6_TRCmodel_NEP_30min(x) = SRS6_LRCmodel_Amax(i+15*(num_year-1)).*SRS6_LRCmodel_QY.*ERA5_data_30min.ERA5_SW_IN(x)'./(SRS6_LRCmodel_Amax(i+15*(num_year-1)) + SRS6_LRCmodel_QY.*ERA5_data_30min.ERA5_SW_IN(x)') - SRS6_TRCmodel_Reco_30min(x);
+            TS7_TRCmodel_NEP_30min(x) = TS7_LRCmodel_Amax(i+15*(num_year-1)).*TS7_LRCmodel_QY.*ERA5_data_30min.ERA5_SW_IN(x)'./(TS7_LRCmodel_Amax(i+15*(num_year-1)) + TS7_LRCmodel_QY.*ERA5_data_30min.ERA5_SW_IN(x)') - TS7_TRCmodel_Reco_30min(x);
+            
+            SRS6_24day_TRCmodel_NEP(i+15*(num_year-1),j) = SRS6_TRCmodel_NEP_30min(x);
+            TS7_24day_TRCmodel_NEP(i+15*(num_year-1),j) = TS7_TRCmodel_NEP_30min(x);
+
+
 
             x=x+1;
             
@@ -1133,24 +1450,35 @@ for i=1:300
     for j=1:48  
         
         SRS6_24day_LRCmodel_NEP_dayave(i,j) = mean(SRS6_24day_LRCmodel_NEP(i,j:48:1152),'omitnan');
-
         TS7_24day_LRCmodel_NEP_dayave(i,j) = mean(TS7_24day_LRCmodel_NEP(i,j:48:1152),'omitnan');
+
+        SRS6_24day_TRCmodel_Reco_dayave(i,j) = mean(SRS6_24day_TRCmodel_Reco(i,j:48:1152),'omitnan');
+        TS7_24day_TRCmodel_Reco_dayave(i,j) = mean(TS7_24day_TRCmodel_Reco(i,j:48:1152),'omitnan');
+
+        SRS6_24day_TRCmodel_NEP_dayave(i,j) = mean(SRS6_24day_TRCmodel_NEP(i,j:48:1152),'omitnan');
+        TS7_24day_TRCmodel_NEP_dayave(i,j) = mean(TS7_24day_TRCmodel_NEP(i,j:48:1152),'omitnan');
     end
 
     SRS6_24day_LRCmodel_NEP_dailyave(i) = mean(SRS6_24day_LRCmodel_NEP_dayave(i,:),'omitnan');
-
     TS7_24day_LRCmodel_NEP_dailyave(i) = mean(TS7_24day_LRCmodel_NEP_dayave(i,:),'omitnan');
+
+    SRS6_24day_TRCmodel_Reco_dailyave(i) = mean(SRS6_24day_TRCmodel_Reco_dayave(i,:),'omitnan');
+    TS7_24day_TRCmodel_Reco_dailyave(i) = mean(TS7_24day_TRCmodel_Reco_dayave(i,:),'omitnan');
+
+    SRS6_24day_TRCmodel_NEP_dailyave(i) = mean(SRS6_24day_TRCmodel_NEP_dayave(i,:),'omitnan');
+    TS7_24day_TRCmodel_NEP_dailyave(i) = mean(TS7_24day_TRCmodel_NEP_dayave(i,:),'omitnan');
 end
 
 
 SRS6_24day_LRCmodel_NEE_dailyave = -SRS6_24day_LRCmodel_NEP_dailyave;
 TS7_24day_LRCmodel_NEE_dailyave = -TS7_24day_LRCmodel_NEP_dailyave;
 
+SRS6_24day_TRCmodel_NEE_dailyave = -SRS6_24day_TRCmodel_NEP_dailyave;
+TS7_24day_TRCmodel_NEE_dailyave = -TS7_24day_TRCmodel_NEP_dailyave;
 
 
 
-
-%%%% Figure EC NEP vs LRC NEP
+%%%% SI Figure EC NEP vs LRC NEP
 SRS6_24day_NEE_dailyave_outlier = SRS6_24day_NEE_dailyave;
 SRS6_24day_NEE_dailyave_outlier(isoutlier(SRS6_24day_NEE_dailyave_outlier)) = nan;
 
@@ -1167,9 +1495,89 @@ plot([-6,2],[-6,2],'k:')
 xlim([-5,2])
 ylim([-5,2])
 box on
-xlabel('Eddy Covariance NEE (µmol s^-^1m^-^2)')
-ylabel('Modeled NEE (µmol s^-^1m^-^2)')
+xlabel('Eddy Covariance NEE (µmol m^-^2s^-^1)')
+ylabel('Light Based Modeled NEE (µmol m^-^2s^-^1)')
 legend('Mangrove Forest','Mangrove Scrub','location','northwest')
+
+
+
+
+
+
+%%%% SI Figure LRC Reco vs TRC Reco PARAMETERS, at 24-day timescales
+
+
+%nanmean(SRS6_24day_beta_MM(:,1)) %7.4877
+%nanmean(SRS6_24day_beta_TRC(:,1)) %3.2184
+
+%nanmean(TS7_24day_beta_MM(:,1)) %1.7636
+%nanmean(TS7_24day_beta_TRC(:,1)) %0.9585
+
+%fitlm(SRS6_24day_beta_MM(:,1),SRS6_24day_beta_TRC(:,1)) %R-squared: 0.083
+%fitlm(TS7_24day_beta_MM(:,1),TS7_24day_beta_TRC(:,1)) %R-squared: 0.00171
+
+
+
+hold on
+plot(SRS6_24day_beta_MM(:,1),SRS6_24day_beta_TRC(:,1),'.','Color',[0 0.4470 0.7410],'markersize',12)
+plot(TS7_24day_beta_MM(:,1),TS7_24day_beta_TRC(:,1),'.','Color',[0.8500 0.3250 0.0980],'markersize',12)
+plot([-1,25],[-1,25],'k:')
+xlabel('Light Based R_e_c_o (µmol m^-^2s^-^1)')
+ylabel('Temperature Based rb (µmol m^-^2s^-^1)')
+legend('Mangrove Forest','Mangrove Scrub','location','northwest')
+box on
+xlim([-1,25])
+ylim([-1,25])
+
+
+% hold on
+% plot(SRS6_24day_beta_MM(:,1))
+% plot(SRS6_24day_beta_TRC(:,1))
+% 
+% hold on
+% plot(TS7_24day_beta_MM(:,1))
+% plot(TS7_24day_beta_TRC(:,1))
+
+
+
+
+
+
+%%%% SI Figure LRC Reco vs TRC Reco MODELED VALUES, at 24-day timescales
+
+
+%nanmean(SRS6_LRCmodel_Reco) %7.1359
+%nanmean(SRS6_24day_TRCmodel_Reco_dailyave) %4.0037
+
+%nanmean(TS7_LRCmodel_Reco) %1.0878
+%nanmean(TS7_24day_TRCmodel_Reco_dailyave) %1.1249
+
+%fitlm(SRS6_LRCmodel_Reco,SRS6_24day_TRCmodel_Reco_dailyave) %R-squared: 0.562
+%fitlm(TS7_LRCmodel_Reco,TS7_24day_TRCmodel_Reco_dailyave) %R-squared: 0.473
+
+
+
+hold on
+plot(SRS6_LRCmodel_Reco,SRS6_24day_TRCmodel_Reco_dailyave,'.','Color',[0 0.4470 0.7410],'markersize',12)
+plot(TS7_LRCmodel_Reco,TS7_24day_TRCmodel_Reco_dailyave,'.','Color',[0.8500 0.3250 0.0980],'markersize',12)
+plot([-3,11],[-3,11],'k:')
+xlabel('Light Based Respiration (µmol m^-^2s^-^1)')
+ylabel('Temperature Based Respiration (µmol m^-^2s^-^1)')
+legend('Mangrove Forest','Mangrove Scrub','location','northwest')
+box on
+xlim([-3,11])
+ylim([-3,11])
+
+
+
+
+%hold on
+%plot(SRS6_LRCmodel_Reco)
+%plot(SRS6_24day_TRCmodel_Reco_dailyave)
+
+%hold on
+%plot(TS7_LRCmodel_Reco)
+%plot(TS7_24day_TRCmodel_Reco_dailyave)
 
 
 
@@ -1250,15 +1658,42 @@ plot([wilma_linear_day,wilma_linear_day],[-200,200],"--k","LineWidth", 2)
 plot([irma_linear_day,irma_linear_day],[-200,200],"--k","LineWidth", 2)
 
 box on
-legend('Mangrove Forest','Mangrove Scrub','Wilma/Irma','Location','north')
-ylabel('NEE (µmol s^-^1m^-^2)')
+legend('Tall Forest','Scrub Forest','Wilma/Irma','Location','north')
+ylabel('NEE (µmol m^-^2s^-^1)')
 ntitle('(c) ','location','northeast');
-%ylabel('F CH_4 (µmol s^-^1m^-^2)')
+%ylabel('F CH_4 (µmol m^-^2s^-^1)')
 %xlim([2004,2024])
 %ylim([-0.5,0.5])
 %ntitle('(c) ','location','northeast');
 
 
+
+
+
+
+
+%%%%%%%%%% mean (SE) LRC parameter values
+
+mean(SRS6_24day_beta_MM(:,1),'omitnan')
+std(SRS6_24day_beta_MM(:,1),'omitnan')/sqrt(length(SRS6_24day_beta_MM(:,1)))
+
+mean(SRS6_24day_beta_MM(:,2),'omitnan')
+std(SRS6_24day_beta_MM(:,2),'omitnan')/sqrt(length(SRS6_24day_beta_MM(:,1)))
+
+mean(SRS6_24day_beta_MM(:,3),'omitnan')
+std(SRS6_24day_beta_MM(:,3),'omitnan')/sqrt(length(SRS6_24day_beta_MM(:,1)))
+
+
+
+
+mean(TS7_24day_beta_MM(:,1),'omitnan')
+std(TS7_24day_beta_MM(:,1),'omitnan')/sqrt(length(TS7_24day_beta_MM(:,1)))
+
+mean(TS7_24day_beta_MM(:,2),'omitnan')
+std(TS7_24day_beta_MM(:,2),'omitnan')/sqrt(length(TS7_24day_beta_MM(:,1)))
+
+mean(TS7_24day_beta_MM(:,3),'omitnan')
+std(TS7_24day_beta_MM(:,3),'omitnan')/sqrt(length(TS7_24day_beta_MM(:,1)))
 
 
 
@@ -1312,18 +1747,18 @@ plot([0,1300],[0,0],'--k')
 
 box on
 ntitle('(a) ','location','northeast');
-ylabel('NEE (µmol s^-^1m^-^2)')
+ylabel('NEE (µmol m^-^2s^-^1)')
 xlabel('Solar Incoming Radiation (W m^-^2)')
 %legend('SRS6','SRS6 disturbance','SRS6 non-disturbance','TS7','Location','northwest')
-legend('Mangrove Forest','Mangrove Scrub','Location','north')
+legend('Tall Forest','Scrub Forest','Location','north')
 
 subplot(2,2,2)
 hold on
 h1 = histogram(SRS6_24day_beta_MM(:,1),'EdgeColor','none',Normalization="percentage")
-h1.BinWidth = 0.2;
+h1.BinWidth = 0.5;
 h2 = histogram(TS7_24day_beta_MM(:,1),'EdgeColor','none',Normalization="percentage")
-h2.BinWidth = 0.2;
-xlabel('R_e_c_o (µmol s^-^1m^-^2)')
+h2.BinWidth = 0.5;
+xlabel('R_e_c_o (µmol m^-^2s^-^1)')
 ylabel('Relative Percentage')
 ytickformat("percentage")
 ntitle('(b) ','location','northeast');
@@ -1348,7 +1783,7 @@ h1 = histogram(SRS6_24day_beta_MM(:,3),'EdgeColor','none',Normalization="percent
 h1.BinWidth = 2;
 h2 = histogram(TS7_24day_beta_MM(:,3),'EdgeColor','none',Normalization="percentage")
 h2.BinWidth = 2;
-xlabel('Amax (µmol s^-^1m^-^2)')
+xlabel('Amax (µmol m^-^2s^-^1)')
 ylabel('Relative Percentage')
 ytickformat("percentage")
 ntitle('(d) ','location','northeast');
@@ -1501,9 +1936,6 @@ box on
 % 
 % %(1-(mean(TS7_24day_beta_MM(index_24day_ds_yr1,3),'omitnan')./mean(TS7_24day_beta_MM(index_24day_not_ds,3),'omitnan')))*100
 
-
-
-
 sum(~isnan(SRS6_24day_beta_MM(index_24day_ds_yr4,3)))
 sum(~isnan(SRS6_modis.LAIqc(index_24day_ds_yr3)))
 
@@ -1522,7 +1954,7 @@ mean(SRS6_24day_beta_MM(index_24day_not_ds,3),'omitnan')
 
 
 %%%% test model paramenters for normal disturbution
-kstest(TS7_8day_beta_MM(:,1))
+kstest(TS7_24day_beta_MM(:,1))
 
 
 
@@ -1571,10 +2003,10 @@ plot(date_plot,SRS6_24day_beta_MM(:,1))
 plot(date_plot,TS7_24day_beta_MM(:,1))
 plot([wilma_date,wilma_date],[0,10],"--k","LineWidth", 2)
 plot([irma_date,irma_date],[0,10],"--k","LineWidth", 2)
-ylabel('R_e_c_o (µmol s^-^1m^-^2)')
+ylabel('R_e_c_o (µmol m^-^2s^-^1)')
 %xlim([2004,2024])
 ntitle('(a) ','location','northeast');
-legend('Mangrove Forest','Mangrove Scrub','Wilma/Irma','Location','northwest')
+legend('Tall Forest','Scrub Forest','Wilma/Irma','Location','northwest')
 box on
 
 
@@ -1597,7 +2029,7 @@ plot(date_plot,SRS6_24day_beta_MM(:,3))
 plot(date_plot,TS7_24day_beta_MM(:,3))
 plot([wilma_date,wilma_date],[0,60],"--k","LineWidth", 2)
 plot([irma_date,irma_date],[0,60],"--k","LineWidth", 2)
-ylabel('Amax (µmol s^-^1m^-^2)')
+ylabel('Amax (µmol m^-^2s^-^1)')
 %xlim([2004,2024])
 %xlabel('Weeks (Since Jan 1, 2004)')
 ntitle('(c) ','location','northeast');
@@ -1669,7 +2101,7 @@ plot(xy_plot_TS7_nonds(:,1),xy_plot_TS7_nonds(:,2),'-','Color',[0.8500 0.3250 0.
 plot(xy_plot_TS7_ds(:,1),xy_plot_TS7_ds(:,2),':','Color',[0.8500 0.3250 0.0980])
 
 
-ylabel('R_e_c_o (µmol s^-^1m^-^2)')
+ylabel('R_e_c_o (µmol m^-^2s^-^1)')
 xlabel('LAI (m^2 m^-^2)')
 ntitle('(b) ','location','northeast');
 xlim([1 7.5])
@@ -1703,7 +2135,7 @@ ntitle('(c) ','location','northeast');
 xlim([1 7.5])
 ylim([0 0.42])
 box on
-legend('Mangrove Forest','Forest Model','Forest Disturbance Model','Mangrove Scrub','Scrub Model','Scrub Disturbance Model','Location','northwest')
+legend('Tall Forest','Tall Model','Tall Disturbance Model','Scrub Forest','Scrub Model','Scrub Disturbance Model','Location','northwest')
 
 
 
@@ -1742,7 +2174,7 @@ plot(xy_plot_SRS6_ds(:,1),xy_plot_SRS6_ds(:,2),':','Color',[0 0.4470 0.7410])
 plot(xy_plot_TS7_nonds(:,1),xy_plot_TS7_nonds(:,2),'-','Color',[0.8500 0.3250 0.0980])
 plot(xy_plot_TS7_ds(:,1),xy_plot_TS7_ds(:,2),':','Color',[0.8500 0.3250 0.0980])
 
-ylabel('Amax (µmol s^-^1m^-^2)')
+ylabel('Amax (µmol m^-^2s^-^1)')
 xlabel('LAI (m^2 m^-^2)')
 ntitle('(d) ','location','northeast');
 xlim([1 7.5])
@@ -1808,7 +2240,7 @@ plot(TS7_24day_beta_MM(286:300,1),'.','Color',[0.8500 0.3250 0.0980])
 box on
 xticks([1,6,11,15])
 xticklabels({'','','',''})
-ylabel('R_e_c_o (µmol s^-^1m^-^2)')
+ylabel('R_e_c_o (µmol m^-^2s^-^1)')
 ntitle('(a) ','location','northeast');
 xlim([0.5,15.5])
 
@@ -1892,7 +2324,7 @@ plot(TS7_24day_beta_MM(286:300,3),'.','Color',[0.8500 0.3250 0.0980])
 box on
 xticks([1,6,11,15])
 xticklabels({'Jan','May','Sept','Dec'})
-ylabel('Amax (µmol s^-^1m^-^2)')
+ylabel('Amax (µmol m^-^2s^-^1)')
 ntitle('(c) ','location','northeast');
 xlim([0.5,15.5])
 
@@ -1912,7 +2344,14 @@ TS7_Reco_fouryear_smooth = smooth(TS7_24day_beta_MM(index_24day_ds_yr1_yr4(61:12
 SRS6_Reco_fouryear_smooth(1:9)=nan;
 SRS6_LRCmodel_Reco_fouryear_smooth = smooth(mean([SRS6_LRCmodel_Reco(index_24day_ds_yr1_yr4(1:60)),SRS6_LRCmodel_Reco(index_24day_ds_yr1_yr4(61:120))],2,"omitnan"),0.5,'rloess');
 TS7_LRCmodel_Reco_fouryear_smooth = smooth(TS7_LRCmodel_Reco(index_24day_ds_yr1_yr4(61:120)),0.5,'rloess');
-SRS6_LRCmodel_Reco_fouryear_smooth(1:7)=nan;
+%SRS6_LRCmodel_Reco_fouryear_smooth(1:7)=nan;
+
+SRS6_Reco_TRC_fouryear_smooth = smooth(mean([SRS6_24day_beta_TRC(index_24day_ds_yr1_yr4(1:60),1),SRS6_24day_beta_TRC(index_24day_ds_yr1_yr4(61:120),1)],2,"omitnan"),0.5,'rloess');
+TS7_Reco_TRC_fouryear_smooth = smooth(TS7_24day_beta_TRC(index_24day_ds_yr1_yr4(61:120),1),0.5,'rloess');
+SRS6_Reco_TRC_fouryear_smooth(1:9)=nan;
+SRS6_24day_TRCmodel_Reco_dailyave=SRS6_24day_TRCmodel_Reco_dailyave';
+SRS6_TRCmodel_Reco_fouryear_smooth = smooth(mean([SRS6_24day_TRCmodel_Reco_dailyave(index_24day_ds_yr1_yr4(1:60)),SRS6_24day_TRCmodel_Reco_dailyave(index_24day_ds_yr1_yr4(61:120))],2,"omitnan"),0.5,'rloess');
+TS7_TRCmodel_Reco_fouryear_smooth = smooth(TS7_24day_TRCmodel_Reco(index_24day_ds_yr1_yr4(61:120)),0.5,'rloess');
 
 
 SRS6_Amax_fouryear_smooth = smooth(mean([SRS6_24day_beta_MM(index_24day_ds_yr1_yr4(1:60),3),SRS6_24day_beta_MM(index_24day_ds_yr1_yr4(61:120),3)],2,"omitnan"),0.5,'rloess');
@@ -1920,19 +2359,19 @@ TS7_Amax_fouryear_smooth = smooth(TS7_24day_beta_MM(index_24day_ds_yr1_yr4(61:12
 SRS6_Amax_fouryear_smooth(1:9)=nan;
 SRS6_LRCmodel_Amax_fouryear_smooth = smooth(mean([SRS6_LRCmodel_Amax(index_24day_ds_yr1_yr4(1:60)),SRS6_LRCmodel_Amax(index_24day_ds_yr1_yr4(61:120))],2,"omitnan"),0.5,'rloess');
 TS7_LRCmodel_Amax_fouryear_smooth = smooth(TS7_LRCmodel_Amax(index_24day_ds_yr1_yr4(61:120)),0.5,'rloess');
-SRS6_LRCmodel_Amax_fouryear_smooth(1:7)=nan;
+%SRS6_LRCmodel_Amax_fouryear_smooth(1:7)=nan;
 
 
 
-subplot(3,1,1)
+subplot(2,2,1)
 hold on
 plot(SRS6_modis_24day.LAIqc(wilma_fiveyear_ind),'.','Color',[0 0.4470 0.7410],'MarkerSize',12)
 plot(SRS6_modis_24day.LAIqc(irma_fiveyear_ind),'.','Color',[0 0.4470 0.7410],'MarkerSize',12)
 plot(TS7_modis_24day.LAIqc(irma_fiveyear_ind),'.','Color',[0.8500 0.3250 0.0980],'MarkerSize',12)
 %add fancy lines
 plot([15,15],[0,8],"--k","LineWidth", 2)   %15 is the number of 24-day periods in one year
-plot([0,15],[5.80,5.80],"LineWidth", 2,'Color',[0 0.4470 0.7410]) %nondisutrbance mean LAI 5.80
-plot([0,15],[2.94,2.94],"LineWidth", 2,'Color',[0.8500 0.3250 0.0980]) %nondisutrbance mean LAI 2.91
+plot([0,15],[6.15,6.15],"LineWidth", 2,'Color',[0 0.4470 0.7410]) %nondisutrbance mean LAI 6.15
+plot([0,15],[2.97,2.97],"LineWidth", 2,'Color',[0.8500 0.3250 0.0980]) %nondisutrbance mean LAI 2.97
 %add fancy smoothin
 plot(16:75,SRS6_LAI_fouryear_smooth,"LineWidth", 2,'Color',[0 0.4470 0.7410],'MarkerSize',12)
 plot(16:75,TS7_LAI_fouryear_smooth,"LineWidth", 2,'Color',[0.8500 0.3250 0.0980],'MarkerSize',12)
@@ -1944,7 +2383,7 @@ xticklabels({'','','','','',''})
 xlim([0 75])
 
 
-subplot(3,1,2)
+subplot(2,2,2)
 hold on
 plot(1:15,SRS6_24day_beta_MM(index_24day_ds_minusyr1(1:15),1),'.','Color',[0 0.4470 0.7410],'MarkerSize',12)
 plot(nan,nan,'o','Color',[0 0.4470 0.7410],'MarkerSize',4) %for the legend
@@ -1981,13 +2420,13 @@ plot(61:75,TS7_LRCmodel_Reco(index_24day_ds_yr4(16:30)),'o','Color',[0.8500 0.32
 
 
 %add fancy lines
-plot([15,15],[0,10],"--k","LineWidth", 2)   %45 is the number of 8-day periods in one year
-%nanmean(TS7_24day_beta_MM(index_24day_not_ds,1))
-plot([0,15],[3.87,3.87],"LineWidth", 2,'Color',[0 0.4470 0.7410]) %nondisutrbance mean Reco 3.87
-plot([0,15],[1.22,1.22],"LineWidth", 2,'Color',[0.8500 0.3250 0.0980]) %nondisutrbance mean Reco 1.22
-%nanmean(SRS6_LRCmodel_Reco(index_24day_not_ds))
-plot([0,15],[3.95,3.95],":","LineWidth", 2,'Color',[0 0.4470 0.7410]) %nondisutrbance mean Reco 3.95
-plot([0,15],[1.07,1.07],":","LineWidth", 2,'Color',[0.8500 0.3250 0.0980]) %nondisutrbance mean Reco 1.07
+plot([15,15],[-3,25],"--k","LineWidth", 2)   %45 is the number of 8-day periods in one year
+%nanmean(SRS6_24day_beta_MM(index_24day_ds_minusyr1,1))
+plot([0,15],[5.53,5.53],"LineWidth", 2,'Color',[0 0.4470 0.7410]) %nondisutrbance mean Reco 5.53
+plot([0,15],[1.38,1.38],"LineWidth", 2,'Color',[0.8500 0.3250 0.0980]) %nondisutrbance mean Reco 1.38
+%nanmean(TS7_LRCmodel_Reco(index_24day_ds_minusyr1))
+plot([0,15],[7.01,7.01],":","LineWidth", 2,'Color',[0 0.4470 0.7410]) %nondisutrbance mean Reco 7.01
+plot([0,15],[0.54,0.54],":","LineWidth", 2,'Color',[0.8500 0.3250 0.0980]) %nondisutrbance mean Reco 0.54
 %add fancy smoothin
 plot(16:75,SRS6_Reco_fouryear_smooth,"LineWidth", 2,'Color',[0 0.4470 0.7410])
 plot(16:75,TS7_Reco_fouryear_smooth,"LineWidth", 2,'Color',[0.8500 0.3250 0.0980])
@@ -1998,14 +2437,75 @@ plot(16:75,TS7_LRCmodel_Reco_fouryear_smooth,":","LineWidth", 2,'Color',[0.8500 
 xticks([0 15 30 45 60 75])
 xticklabels({'','','','','',''})
 xlim([0 75])
+ylim([-3 25])
 box on
-legend('EC Mangrove Forest','Modeled Mangrove Forest','EC Mangrove Scrub','Modeled Mangrove Scrub','Location','northeast')
-ylabel('R_e_c_o (µmol s^-^1m^-^2)')
+legend('EC Tall Forest','Modeled Tall Forest','EC Scrub Forest','Modeled Scrub Forest','Location','northeast')
+ylabel('Light Based R_e_c_o (µmol m^-^2s^-^1)')
 ntitle(' (b)','location','northwest');
 
 
+subplot(2,2,4)
+hold on
+plot(1:15,SRS6_24day_beta_TRC(index_24day_ds_minusyr1(1:15),1),'.','Color',[0 0.4470 0.7410],'MarkerSize',12)
+plot(nan,nan,'o','Color',[0 0.4470 0.7410],'MarkerSize',4) %for the legend
+plot(nan,nan,'.','Color',[0.8500 0.3250 0.0980],'MarkerSize',12) %for the legend
+plot(nan,nan,'o','Color',[0.8500 0.3250 0.0980],'MarkerSize',4) %for the legend
+plot(1:15,SRS6_24day_beta_TRC(index_24day_ds_minusyr1(16:30),1),'.','Color',[0 0.4470 0.7410],'MarkerSize',12)
+plot(16:30,SRS6_24day_beta_TRC(index_24day_ds_yr1(1:15),1),'.','Color',[0 0.4470 0.7410],'MarkerSize',12)
+plot(16:30,SRS6_24day_beta_TRC(index_24day_ds_yr1(16:30),1),'.','Color',[0 0.4470 0.7410],'MarkerSize',12)
+plot(31:45,SRS6_24day_beta_TRC(index_24day_ds_yr2(1:15),1),'.','Color',[0 0.4470 0.7410],'MarkerSize',12)
+plot(31:45,SRS6_24day_beta_TRC(index_24day_ds_yr2(16:30),1),'.','Color',[0 0.4470 0.7410],'MarkerSize',12)
+plot(46:60,SRS6_24day_beta_TRC(index_24day_ds_yr3(1:15),1),'.','Color',[0 0.4470 0.7410],'MarkerSize',12)
+plot(46:60,SRS6_24day_beta_TRC(index_24day_ds_yr3(16:30),1),'.','Color',[0 0.4470 0.7410],'MarkerSize',12)
+plot(61:75,SRS6_24day_beta_TRC(index_24day_ds_yr4(1:15),1),'.','Color',[0 0.4470 0.7410],'MarkerSize',12)
+plot(61:75,SRS6_24day_beta_TRC(index_24day_ds_yr4(16:30),1),'.','Color',[0 0.4470 0.7410],'MarkerSize',12)
 
-subplot(3,1,3)
+plot(1:15,TS7_24day_beta_TRC(index_24day_ds_minusyr1(16:30),1),'.','Color',[0.8500 0.3250 0.0980],'MarkerSize',12)
+plot(16:30,TS7_24day_beta_TRC(index_24day_ds_yr1(16:30),1),'.','Color',[0.8500 0.3250 0.0980],'MarkerSize',12)
+plot(31:45,TS7_24day_beta_TRC(index_24day_ds_yr2(16:30),1),'.','Color',[0.8500 0.3250 0.0980],'MarkerSize',12)
+plot(46:60,TS7_24day_beta_TRC(index_24day_ds_yr3(16:30),1),'.','Color',[0.8500 0.3250 0.0980],'MarkerSize',12)
+plot(61:75,TS7_24day_beta_TRC(index_24day_ds_yr4(16:30),1),'.','Color',[0.8500 0.3250 0.0980],'MarkerSize',12)
+
+%LRC modeled data
+plot(1:15,SRS6_24day_TRCmodel_Reco_dailyave(index_24day_ds_minusyr1(16:30)),'o','Color',[0 0.4470 0.7410],'MarkerSize',4)
+plot(16:30,SRS6_24day_TRCmodel_Reco_dailyave(index_24day_ds_yr1(16:30)),'o','Color',[0 0.4470 0.7410],'MarkerSize',4)
+plot(31:45,SRS6_24day_TRCmodel_Reco_dailyave(index_24day_ds_yr2(16:30)),'o','Color',[0 0.4470 0.7410],'MarkerSize',4)
+plot(46:60,SRS6_24day_TRCmodel_Reco_dailyave(index_24day_ds_yr3(16:30)),'o','Color',[0 0.4470 0.7410],'MarkerSize',4)
+plot(61:75,SRS6_24day_TRCmodel_Reco_dailyave(index_24day_ds_yr4(16:30)),'o','Color',[0 0.4470 0.7410],'MarkerSize',4)
+
+plot(1:15,TS7_24day_TRCmodel_Reco_dailyave(index_24day_ds_minusyr1(16:30)),'o','Color',[0.8500 0.3250 0.0980],'MarkerSize',4)
+plot(16:30,TS7_24day_TRCmodel_Reco_dailyave(index_24day_ds_yr1(16:30)),'o','Color',[0.8500 0.3250 0.0980],'MarkerSize',4)
+plot(31:45,TS7_24day_TRCmodel_Reco_dailyave(index_24day_ds_yr2(16:30)),'o','Color',[0.8500 0.3250 0.0980],'MarkerSize',4)
+plot(46:60,TS7_24day_TRCmodel_Reco_dailyave(index_24day_ds_yr3(16:30)),'o','Color',[0.8500 0.3250 0.0980],'MarkerSize',4)
+plot(61:75,TS7_24day_TRCmodel_Reco_dailyave(index_24day_ds_yr4(16:30)),'o','Color',[0.8500 0.3250 0.0980],'MarkerSize',4)
+
+
+%add fancy lines
+plot([15,15],[-2,10],"--k","LineWidth", 2)   %45 is the number of 8-day periods in one year
+%nanmean(TS7_24day_beta_TRC(index_24day_ds_minusyr1,1))
+plot([0,15],[2.1492,2.1492],"LineWidth", 2,'Color',[0 0.4470 0.7410]) %nondisutrbance mean Reco 2.1492
+plot([0,15],[0.5349,0.5349],"LineWidth", 2,'Color',[0.8500 0.3250 0.0980]) %nondisutrbance mean Reco 0.5349
+%nanmean(SRS6_24day_TRCmodel_Reco_dailyave(index_24day_ds_minusyr1))
+plot([0,15],[3.8019,3.8019],":","LineWidth", 2,'Color',[0 0.4470 0.7410]) %nondisutrbance mean Reco 3.8019
+plot([0,15],[0.9261,0.9261],":","LineWidth", 2,'Color',[0.8500 0.3250 0.0980]) %nondisutrbance mean Reco 0.9261
+%add fancy smoothin
+plot(16:75,SRS6_Reco_TRC_fouryear_smooth,"LineWidth", 2,'Color',[0 0.4470 0.7410])
+plot(16:75,TS7_Reco_TRC_fouryear_smooth,"LineWidth", 2,'Color',[0.8500 0.3250 0.0980])
+plot(16:75,SRS6_TRCmodel_Reco_fouryear_smooth,":","LineWidth", 2,'Color',[0 0.4470 0.7410])
+plot(16:75,TS7_TRCmodel_Reco_fouryear_smooth,":","LineWidth", 2,'Color',[0.8500 0.3250 0.0980])
+
+
+xticks([0 15 30 45 60 75])
+xticklabels({'','','','','',''})
+xticklabels({'Year = -1','Hurricane','Year = 1','Year = 2','Year = 3','Year = 4'})
+xlim([0 75])
+ylim([-0.5 8])
+box on
+ylabel('Temperature Based R_e_c_o (µmol m^-^2s^-^1)')
+ntitle(' (d)','location','northwest');
+
+
+subplot(2,2,3)
 hold on
 plot(1:15,SRS6_24day_beta_MM(index_24day_ds_minusyr1(1:15),3),'.','Color',[0 0.4470 0.7410],'MarkerSize',12)
 plot(1:15,SRS6_24day_beta_MM(index_24day_ds_minusyr1(16:30),3),'.','Color',[0 0.4470 0.7410],'MarkerSize',12)
@@ -2039,12 +2539,12 @@ plot(61:75,TS7_LRCmodel_Amax(index_24day_ds_yr4(16:30)),'o','Color',[0.8500 0.32
 
 %add fancy lines
 plot([15,15],[0,60],"--k","LineWidth", 2)   %15 is the number of 24-day periods in one year
-%nanmean(TS7_24day_beta_MM(index_24day_not_ds(136:158),3))
-plot([0,15],[24.85,24.85],"LineWidth", 2,'Color',[0 0.4470 0.7410]) %nondisutrbance mean Amax 24.585
-plot([0,15],[7.68,7.68],"LineWidth", 2,'Color',[0.8500 0.3250 0.0980]) %nondisutrbance mean Amax 7.68
-%nanmean(SRS6_LRCmodel_Amax(index_24day_not_ds))
-plot([0,15],[24.55,24.55],":","LineWidth", 2,'Color',[0 0.4470 0.7410]) %nondisutrbance mean Reco  24.55
-plot([0,15],[10.04,10.04],":","LineWidth", 2,'Color',[0.8500 0.3250 0.0980]) %nondisutrbance mean Reco 10.04
+%nanmean(SRS6_24day_beta_MM(index_24day_ds_minusyr1,3))
+plot([0,15],[28.77,28.77],"LineWidth", 2,'Color',[0 0.4470 0.7410]) %nondisutrbance mean Amax 28.77
+plot([0,15],[6.65,6.65],"LineWidth", 2,'Color',[0.8500 0.3250 0.0980]) %nondisutrbance mean Amax 6.65
+%nanmean(TS7_LRCmodel_Amax(index_24day_ds_minusyr1))
+plot([0,15],[32.97,32.97],":","LineWidth", 2,'Color',[0 0.4470 0.7410]) %nondisutrbance mean Reco  32.97
+plot([0,15],[9.06,9.06],":","LineWidth", 2,'Color',[0.8500 0.3250 0.0980]) %nondisutrbance mean Reco 9.06
 %add fancy smoothin
 plot(16:75,SRS6_Amax_fouryear_smooth,"LineWidth", 2,'Color',[0 0.4470 0.7410],'MarkerSize',12)
 plot(16:75,TS7_Amax_fouryear_smooth,"LineWidth", 2,'Color',[0.8500 0.3250 0.0980],'MarkerSize',12)
@@ -2056,7 +2556,7 @@ xticklabels({'Year = -1','Hurricane','Year = 1','Year = 2','Year = 3','Year = 4'
 xlim([0 75])
 ylim([0 40])
 box on
-ylabel('Amax (µmol s^-^1m^-^2)')
+ylabel('Amax (µmol m^-^2s^-^1)')
 ntitle(' (c)','location','northwest');
 
 
@@ -2077,7 +2577,11 @@ SRS6_NEE_fouryear_smooth(1:8)=nan;
 
 SRS6_LRCmodel_NEE_fouryear_smooth = smooth(mean([SRS6_24day_LRCmodel_NEE_dailyave(wilma_fouryear_ind)',SRS6_24day_LRCmodel_NEE_dailyave(irma_fouryear_ind)'],2,"omitnan"),0.5,'rloess');
 TS7_LRCmodel_NEE_fouryear_smooth = smooth(TS7_24day_LRCmodel_NEE_dailyave(irma_fouryear_ind),0.5,'rloess');
-SRS6_LRCmodel_NEE_fouryear_smooth(1:6)=nan;
+%SRS6_LRCmodel_NEE_fouryear_smooth(1:6)=nan;
+
+
+SRS6_TRCmodel_NEE_fouryear_smooth = smooth(mean([SRS6_24day_TRCmodel_NEE_dailyave(wilma_fouryear_ind)',SRS6_24day_TRCmodel_NEE_dailyave(irma_fouryear_ind)'],2,"omitnan"),0.5,'rloess');
+TS7_TRCmodel_NEE_fouryear_smooth = smooth(TS7_24day_TRCmodel_NEE_dailyave(irma_fouryear_ind),0.5,'rloess');
 
 %non-disturbance means
 %mean(SRS6_24day_NEE_dailyave(~or(wilma_fouryear_ind,irma_fouryear_ind)),"omitnan") -2.9956
@@ -2087,8 +2591,16 @@ SRS6_LRCmodel_NEE_fouryear_smooth(1:6)=nan;
 %mean(TS7_24day_LRCmodel_NEP_dailyave(~irma_fouryear_ind),"omitnan") 1.6563
 
 
+%nanmean(SRS6_24day_NEE_dailyave(index_24day_ds_minusyr1)) -3.4097
+%nanmean(TS7_24day_NEE_dailyave(index_24day_ds_minusyr1)) -1.1780
 
-subplot(2,1,1)
+%nanmean(SRS6_24day_LRCmodel_NEP_dailyave(index_24day_ds_minusyr1)) 2.4004
+%nanmean(TS7_24day_LRCmodel_NEP_dailyave(index_24day_ds_minusyr1)) 2.5586
+
+%nanmean(SRS6_24day_TRCmodel_NEP_dailyave(index_24day_ds_minusyr1)) 5.6126
+%nanmean(TS7_24day_TRCmodel_NEP_dailyave(index_24day_ds_minusyr1)) 2.1753
+
+subplot(3,1,1)
 hold on
 plot(SRS6_24day_NEE_dailyave(wilma_fiveyear_ind),'.','Color',[0 0.4470 0.7410],'MarkerSize',12)
 plot(nan,'.','Color',[0.8500 0.3250 0.0980],'MarkerSize',12) %faking it for the legend
@@ -2097,23 +2609,23 @@ plot(SRS6_24day_NEE_dailyave(irma_fiveyear_ind),'.','Color',[0 0.4470 0.7410],'M
 plot(TS7_24day_NEE_dailyave(irma_fiveyear_ind),'.','Color',[0.8500 0.3250 0.0980],'MarkerSize',12)
 %add fancy lines
 plot([15,15],[-14,16],"--k","LineWidth", 2)   %15 is the number of 24-day periods in one year
-plot([0,15],[-2.9956,-2.9956],"LineWidth", 2,'Color',[0 0.4470 0.7410]) %nondisutrbance mean NEE 2.95995683
-plot([0,15],[-1.1308,-1.1308],"LineWidth", 2,'Color',[0.8500 0.3250 0.0980]) %nondisutrbance mean NEE 1.1308
+plot([0,15],[-3.4097,-3.4097],"LineWidth", 2,'Color',[0 0.4470 0.7410]) %nondisutrbance mean NEE -3.4097
+plot([0,15],[-1.1780,-1.1780],"LineWidth", 2,'Color',[0.8500 0.3250 0.0980]) %nondisutrbance mean NEE -1.1780
 %add fancy smoothin
 plot(16:75,SRS6_NEE_fouryear_smooth,"LineWidth", 2,'Color',[0 0.4470 0.7410],'MarkerSize',12)
 plot(16:75,TS7_NEE_fouryear_smooth,"LineWidth", 2,'Color',[0.8500 0.3250 0.0980],'MarkerSize',12)
 
 xticks([0 15 30 45 60 75])
-xticklabels({'Year = -1','Hurricane','Year = 1','Year = 2','Year = 3','Year = 4'})
+xticklabels({'','','','','',''})
 ylim([-6 2])
 xlim([0 75])
 box on
-ylabel('Eddy Covariance NEE (µmol s^-^1m^-^2)')
+ylabel({'Eddy Covariance  NEE';'(µmol m^-^2s^-^1)'})
 ntitle(' (a)','location','northwest');
-legend('Mangrove Forest','Mangrove Scrub','Location','northeast')
+legend('Tall Forest','Scrub Forest','Location','northeast')
 
 
-subplot(2,1,2)
+subplot(3,1,2)
 hold on
 plot(SRS6_24day_LRCmodel_NEE_dailyave(wilma_fiveyear_ind),'o','Color',[0 0.4470 0.7410],'MarkerSize',4)
 plot(SRS6_24day_LRCmodel_NEE_dailyave(irma_fiveyear_ind),'o','Color',[0 0.4470 0.7410],'MarkerSize',4)
@@ -2121,22 +2633,43 @@ plot(SRS6_24day_LRCmodel_NEE_dailyave(irma_fiveyear_ind),'o','Color',[0 0.4470 0
 plot(TS7_24day_LRCmodel_NEE_dailyave(irma_fiveyear_ind),'o','Color',[0.8500 0.3250 0.0980],'MarkerSize',4)
 %add fancy lines
 plot([15,15],[-4,10],"--k","LineWidth", 2)   %15 is the number of 24-day periods in one year
-plot([0,15],[-1.6616,-1.6616],":","LineWidth", 2,'Color',[0 0.4470 0.7410]) %nondisutrbance mean NEE 1.6616
-plot([0,15],[-1.6563,-1.6563],":","LineWidth", 2,'Color',[0.8500 0.3250 0.0980]) %nondisutrbance mean NEE 1.6563
+plot([0,15],[-2.4004,-2.4004],":","LineWidth", 2,'Color',[0 0.4470 0.7410]) %nondisutrbance mean NEP 2.4004
+plot([0,15],[-2.5586,-2.5586],":","LineWidth", 2,'Color',[0.8500 0.3250 0.0980]) %nondisutrbance mean NEP 2.5586
 %add fancy smoothin
 plot(16:75,SRS6_LRCmodel_NEE_fouryear_smooth,":","LineWidth", 2,'Color',[0 0.4470 0.7410],'MarkerSize',12)
 plot(16:75,TS7_LRCmodel_NEE_fouryear_smooth,":","LineWidth", 2,'Color',[0.8500 0.3250 0.0980],'MarkerSize',12)
 
 xticks([0 15 30 45 60 75])
-xticklabels({'Year = -1','Hurricane','Year = 1','Year = 2','Year = 3','Year = 4'})
+xticklabels({'','','','','',''})
 ylim([-4 1])
 xlim([0 75])
 box on
-ylabel('Modeled NEE (µmol s^-^1m^-^2)')
+ylabel({'Light Based Modeled NEE';'(µmol m^-^2s^-^1)'})
 ntitle(' (b)','location','northwest');
 
 
 
+subplot(3,1,3)
+hold on
+plot(SRS6_24day_TRCmodel_NEE_dailyave(wilma_fiveyear_ind),'o','Color',[0 0.4470 0.7410],'MarkerSize',4)
+plot(SRS6_24day_TRCmodel_NEE_dailyave(irma_fiveyear_ind),'o','Color',[0 0.4470 0.7410],'MarkerSize',4)
+
+plot(TS7_24day_TRCmodel_NEE_dailyave(irma_fiveyear_ind),'o','Color',[0.8500 0.3250 0.0980],'MarkerSize',4)
+%add fancy lines
+plot([15,15],[-8,4],"--k","LineWidth", 2)   %15 is the number of 24-day periods in one year
+plot([0,15],[-5.6126,-5.6126],":","LineWidth", 2,'Color',[0 0.4470 0.7410]) %nondisutrbance mean NEP 5.6126
+plot([0,15],[-2.1753,-2.1753],":","LineWidth", 2,'Color',[0.8500 0.3250 0.0980]) %nondisutrbance mean NEP 2.1753
+%add fancy smoothin
+plot(16:75,SRS6_TRCmodel_NEE_fouryear_smooth,":","LineWidth", 2,'Color',[0 0.4470 0.7410],'MarkerSize',12)
+plot(16:75,TS7_TRCmodel_NEE_fouryear_smooth,":","LineWidth", 2,'Color',[0.8500 0.3250 0.0980],'MarkerSize',12)
+
+xticks([0 15 30 45 60 75])
+xticklabels({'Year = -1','Hurricane','Year = 1','Year = 2','Year = 3','Year = 4'})
+ylim([-8 2])
+xlim([0 75])
+box on
+ylabel({'Temperature Based Modeled NEE';'(µmol m^-^2s^-^1)'})
+ntitle(' (c)','location','northwest');
 
 
 
@@ -2150,26 +2683,26 @@ ntitle(' (b)','location','northwest');
 
 
 %Amax
-sum(mean(SRS6_LRCmodel_Amax(index_24day_not_ds),'omitnan')-SRS6_LRCmodel_Amax(wilma_fouryear_ind),'omitnan')*3600*48*24*(1/1000000)*12
-sum(mean(SRS6_LRCmodel_Amax(index_24day_not_ds),'omitnan')-SRS6_LRCmodel_Amax(irma_fouryear_ind),'omitnan')*3600*48*24*(1/1000000)*12
-sum(mean(TS7_LRCmodel_Amax(index_24day_not_ds),'omitnan')-TS7_LRCmodel_Amax(wilma_fouryear_ind),'omitnan')*3600*48*24*(1/1000000)*12
-sum(mean(TS7_LRCmodel_Amax(index_24day_not_ds),'omitnan')-TS7_LRCmodel_Amax(irma_fouryear_ind),'omitnan')*3600*48*24*(1/1000000)*12
+sum(mean(SRS6_LRCmodel_Amax(index_24day_ds_minusyr1),'omitnan')-SRS6_LRCmodel_Amax(wilma_fouryear_ind),'omitnan')*3600*48*24*(1/1000000)*12
+sum(mean(SRS6_LRCmodel_Amax(index_24day_ds_minusyr1),'omitnan')-SRS6_LRCmodel_Amax(irma_fouryear_ind),'omitnan')*3600*48*24*(1/1000000)*12
+sum(mean(TS7_LRCmodel_Amax(index_24day_ds_minusyr1),'omitnan')-TS7_LRCmodel_Amax(wilma_fouryear_ind),'omitnan')*3600*48*24*(1/1000000)*12
+sum(mean(TS7_LRCmodel_Amax(index_24day_ds_minusyr1),'omitnan')-TS7_LRCmodel_Amax(irma_fouryear_ind),'omitnan')*3600*48*24*(1/1000000)*12
 
 %QY
 %sum(mean(SRS6_LRCmodel_QY(index_not_ds),'omitnan')-SRS6_LRCmodel_QY(index_ds),'omitnan')
 %sum(mean(TS7_LRCmodel_QY(index_not_ds),'omitnan')-TS7_LRCmodel_QY(index_ds),'omitnan')
 
 %Reco
-sum(mean(SRS6_LRCmodel_Reco(index_24day_not_ds),'omitnan')-SRS6_LRCmodel_Reco(wilma_fouryear_ind),'omitnan')*3600*48*24*(1/1000000)*12
-sum(mean(SRS6_LRCmodel_Reco(index_24day_not_ds),'omitnan')-SRS6_LRCmodel_Reco(irma_fouryear_ind),'omitnan')*3600*48*24*(1/1000000)*12
-sum(mean(TS7_LRCmodel_Reco(index_24day_not_ds),'omitnan')-TS7_LRCmodel_Reco(wilma_fouryear_ind),'omitnan')*3600*48*24*(1/1000000)*12
-sum(mean(TS7_LRCmodel_Reco(index_24day_not_ds),'omitnan')-TS7_LRCmodel_Reco(irma_fouryear_ind),'omitnan')*3600*48*24*(1/1000000)*12
+sum(mean(SRS6_LRCmodel_Reco(index_24day_ds_minusyr1),'omitnan')-SRS6_LRCmodel_Reco(wilma_fouryear_ind),'omitnan')*3600*48*24*(1/1000000)*12
+sum(mean(SRS6_LRCmodel_Reco(index_24day_ds_minusyr1),'omitnan')-SRS6_LRCmodel_Reco(irma_fouryear_ind),'omitnan')*3600*48*24*(1/1000000)*12
+sum(mean(TS7_LRCmodel_Reco(index_24day_ds_minusyr1),'omitnan')-TS7_LRCmodel_Reco(wilma_fouryear_ind),'omitnan')*3600*48*24*(1/1000000)*12
+sum(mean(TS7_LRCmodel_Reco(index_24day_ds_minusyr1),'omitnan')-TS7_LRCmodel_Reco(irma_fouryear_ind),'omitnan')*3600*48*24*(1/1000000)*12
 
 %LRC NEP
-sum(mean(SRS6_24day_LRCmodel_NEP_dailyave(index_24day_not_ds),'omitnan')-SRS6_24day_LRCmodel_NEP_dailyave(wilma_fouryear_ind),'omitnan')*3600*48*24*(1/1000000)*12
-sum(mean(SRS6_24day_LRCmodel_NEP_dailyave(index_24day_not_ds),'omitnan')-SRS6_24day_LRCmodel_NEP_dailyave(irma_fouryear_ind),'omitnan')*3600*48*24*(1/1000000)*12
-sum(mean(TS7_24day_LRCmodel_NEP_dailyave(index_24day_not_ds),'omitnan')-TS7_24day_LRCmodel_NEP_dailyave(wilma_fouryear_ind),'omitnan')*3600*48*24*(1/1000000)*12
-sum(mean(TS7_24day_LRCmodel_NEP_dailyave(index_24day_not_ds),'omitnan')-TS7_24day_LRCmodel_NEP_dailyave(irma_fouryear_ind),'omitnan')*3600*48*24*(1/1000000)*12
+sum(mean(SRS6_24day_LRCmodel_NEP_dailyave(index_24day_ds_minusyr1),'omitnan')-SRS6_24day_LRCmodel_NEP_dailyave(wilma_fouryear_ind),'omitnan')*3600*48*24*(1/1000000)*12
+sum(mean(SRS6_24day_LRCmodel_NEP_dailyave(index_24day_ds_minusyr1),'omitnan')-SRS6_24day_LRCmodel_NEP_dailyave(irma_fouryear_ind),'omitnan')*3600*48*24*(1/1000000)*12
+sum(mean(TS7_24day_LRCmodel_NEP_dailyave(index_24day_ds_minusyr1),'omitnan')-TS7_24day_LRCmodel_NEP_dailyave(wilma_fouryear_ind),'omitnan')*3600*48*24*(1/1000000)*12
+sum(mean(TS7_24day_LRCmodel_NEP_dailyave(index_24day_ds_minusyr1),'omitnan')-TS7_24day_LRCmodel_NEP_dailyave(irma_fouryear_ind),'omitnan')*3600*48*24*(1/1000000)*12
 
 
 
@@ -2179,18 +2712,6 @@ sum(mean(TS7_24day_LRCmodel_NEP_dailyave(index_24day_not_ds),'omitnan')-TS7_24da
 
 
 
-
-ecosystem_LAI = cat(1,TS7_modis.LAIqc,SRS6_modis.LAIqc);
-ecosystem_MM_1 = cat(1,TS7_8day_beta_MM(:,1),SRS6_8day_beta_MM(:,1));
-
-
-
-
-%write out some data
-
-%DataOut = table(SRS6_modis.Date,SRS6_modis.LAIqc,SRS6_8day_beta_MM(:,1:3),TS7_modis.LAIqc,TS7_8day_beta_MM(:,1:3));
-
-%writetable(DataOut,'C:\Users\der66\Dropbox (YSE)\Yale\FCE projects\Everglades Light Response Curves\LRC_parameter_LAI_data.csv')
 
 
 
@@ -2372,8 +2893,8 @@ plot(RN.Date,RN.TS7Varible,'Color',[0.8500 0.3250 0.0980])
 box on
 plot([wilma_date,wilma_date],[0,8],"--k","LineWidth", 2)
 plot([irma_date,irma_date],[0,8],"--k","LineWidth", 2)
-ylabel('R_e_c_o [µmol s^-^1m^-^2]')
-ylim([0,8])
+ylabel('R_e_c_o [µmol m^-^2s^-^1]')
+ylim([0,25])
 ntitle(' (a)','location','northwest');
 
 subplot(2,1,2)  
@@ -2473,7 +2994,7 @@ plot(RN.Date,RN.TS7Varible,'Color',[0.8500 0.3250 0.0980])
 box on
 plot([wilma_date,wilma_date],[0,60],"--k","LineWidth", 2)
 plot([irma_date,irma_date],[0,60],"--k","LineWidth", 2)
-ylabel('Amax [µmol s^-^1m^-^2]')
+ylabel('Amax [µmol m^-^2s^-^1]')
 ylim([0,60])
 ntitle(' (a)','location','northwest');
 
@@ -2524,7 +3045,7 @@ plot(RN.Date,RN.TS7Varible,'Color',[0.8500 0.3250 0.0980])
 box on
 plot([wilma_date,wilma_date],[-10,5],"--k","LineWidth", 2)
 plot([irma_date,irma_date],[-10,5],"--k","LineWidth", 2)
-ylabel('NEE [µmol s^-^1m^-^2]')
+ylabel('NEE [µmol m^-^2s^-^1]')
 ylim([-10,5])
 ntitle(' (a)','location','northwest');
 
@@ -2572,17 +3093,16 @@ ntitle(' (b)','location','northwest');
 
 clear under_x1 under_x2 under_x3 under_x1_half under_x2_half under_x3_half
 
-y=1:length(RN.output);
-RN_half=RN.output(1:(length(RN.output)/2));
+y=1:length(RN.SRS6output);
+RN_half=RN.SRS6output(1:(length(RN.SRS6output)/2));
 
+under_x1 = y(RN.SRS6output<prctile(RN.SRS6output,[15]));
+under_x2 = y(RN.SRS6output<prctile(RN.SRS6output,[10]));
+under_x3 = y(RN.SRS6output<prctile(RN.SRS6output,[5]));
 
-under_x1 = y(RN.output<prctile(RN.output,[15]));
-under_x2 = y(RN.output<prctile(RN.output,[10]));
-under_x3 = y(RN.output<prctile(RN.output,[5]));
-
-under_x1_half = y(RN_half<prctile(RN.output,[15]));
-under_x2_half = y(RN_half<prctile(RN.output,[10]));
-under_x3_half = y(RN_half<prctile(RN.output,[5]));
+under_x1_half = y(RN_half<prctile(RN.SRS6output,[15]));
+under_x2_half = y(RN_half<prctile(RN.SRS6output,[10]));
+under_x3_half = y(RN_half<prctile(RN.SRS6output,[5]));
 
 date_wilma_x1 = under_x1_half(find(under_x1_half,1,'last'));
 date_irma_x1 = under_x1(find(under_x1,1,'last'));
@@ -2593,6 +3113,31 @@ date_irma_x2 = under_x2(find(under_x2,1,'last'));
 date_wilma_x3 = under_x3_half(find(under_x3_half,1,'last'));
 date_irma_x3 = under_x3(find(under_x3,1,'last'));
 
+
+
+
+clear under_x1 under_x2 under_x3 under_x1_half under_x2_half under_x3_half
+
+y=1:length(RN.TS7output);
+RN_half=RN.TS7output(1:(length(RN.TS7output)/2));
+
+
+under_x1 = y(RN.TS7output<prctile(RN.TS7output,[15]));
+under_x2 = y(RN.TS7output<prctile(RN.TS7output,[10]));
+under_x3 = y(RN.TS7output<prctile(RN.TS7output,[5]));
+
+under_x1_half = y(RN_half<prctile(RN.TS7output,[15]));
+under_x2_half = y(RN_half<prctile(RN.TS7output,[10]));
+under_x3_half = y(RN_half<prctile(RN.TS7output,[5]));
+
+date_wilma_x1 = under_x1_half(find(under_x1_half,1,'last'));
+date_irma_x1 = under_x1(find(under_x1,1,'last'));
+
+date_wilma_x2 = under_x2_half(find(under_x2_half,1,'last'));
+date_irma_x2 = under_x2(find(under_x2,1,'last'));
+
+date_wilma_x3 = under_x3_half(find(under_x3_half,1,'last'));
+date_irma_x3 = under_x3(find(under_x3,1,'last'));
 
 
 
@@ -2610,24 +3155,24 @@ between(irma_date,RN.Date(date_irma_x3),'days')
 
 
 %SRS6 Reco 24-day
-between(wilma_date,RN.Date(29),'days')
+between(wilma_date,RN.Date(date_wilma_x1),'days')
 between(irma_date,RN.Date(date_irma_x1),'days')
 
-between(wilma_date,RN.Date(28),'days')
+between(wilma_date,RN.Date(date_wilma_x2),'days')
 between(irma_date,RN.Date(date_irma_x2),'days')
 
-between(wilma_date,RN.Date(28),'days')
+between(wilma_date,RN.Date(date_wilma_x3),'days')
 between(irma_date,RN.Date(date_irma_x3),'days')
 
 
 %SRS6 QY 24-day
-between(wilma_date,RN.Date(32),'days')
+between(wilma_date,RN.Date(date_wilma_x1),'days')
 between(irma_date,RN.Date(date_irma_x1),'days')
 
-between(wilma_date,RN.Date(32),'days')
+between(wilma_date,RN.Date(date_wilma_x2),'days')
 between(irma_date,RN.Date(date_irma_x2),'days')
 
-between(wilma_date,RN.Date(31),'days')
+between(wilma_date,RN.Date(date_wilma_x3),'days')
 between(irma_date,RN.Date(date_irma_x3),'days')
 
 
@@ -2654,45 +3199,78 @@ between(wilma_date,RN.Date(date_wilma_x3),'days')
 between(irma_date,RN.Date(date_irma_x3),'days')
 
 
+% 
+% %SRS6 LAI 8-day
+% between(wilma_date,SRS6_modis.Date(date_wilma_x1),'days')
+% between(irma_date,SRS6_modis.Date(638),'days') %between(irma_date,SRS6_modis.Date(date_irma_x1),'days')
+% 
+% between(wilma_date,SRS6_modis.Date(date_wilma_x2),'days')
+% between(irma_date,SRS6_modis.Date(date_irma_x2),'days')
+% 
+% between(wilma_date,SRS6_modis.Date(date_wilma_x3),'days')
+% between(irma_date,SRS6_modis.Date(date_irma_x3),'days')
+% 
+% 
+% %TS7 LAI 8-day
+% between(irma_date,TS7_modis.Date(date_irma_x1),'days')
+% between(irma_date,TS7_modis.Date(date_irma_x2),'days')
+% between(irma_date,TS7_modis.Date(date_irma_x3),'days')
+% 
+% 
+% %SRS6 Reco days  8-day
+% between(wilma_date,SRS6_modis.Date(83),'days')%between(wilma_date,SRS6_modis.Date(date_wilma_x1),'days')
+% between(irma_date,SRS6_modis.Date(date_irma_x1),'days')
+% 
+% between(wilma_date,SRS6_modis.Date(82),'days')%between(wilma_date,SRS6_modis.Date(date_wilma_x2),'days')
+% between(irma_date,SRS6_modis.Date(date_irma_x2),'days')
+% 
+% between(wilma_date,SRS6_modis.Date(81),'days')%between(wilma_date,SRS6_modis.Date(date_wilma_x3),'days')
+% between(irma_date,SRS6_modis.Date(date_irma_x3),'days')
+% 
+% 
+% %SRS6 Amax days  8-day
+% between(wilma_date,SRS6_modis.Date(date_wilma_x1),'days')
+% between(irma_date,SRS6_modis.Date(date_irma_x1),'days')
+% 
+% between(wilma_date,SRS6_modis.Date(date_wilma_x2),'days')
+% between(irma_date,SRS6_modis.Date(date_irma_x2),'days')
+% 
+% between(wilma_date,SRS6_modis.Date(date_wilma_x3),'days')
+% between(irma_date,SRS6_modis.Date(date_irma_x3),'days')
 
-%SRS6 LAI 8-day
-between(wilma_date,SRS6_modis.Date(date_wilma_x1),'days')
-between(irma_date,SRS6_modis.Date(638),'days') %between(irma_date,SRS6_modis.Date(date_irma_x1),'days')
-
-between(wilma_date,SRS6_modis.Date(date_wilma_x2),'days')
-between(irma_date,SRS6_modis.Date(date_irma_x2),'days')
-
-between(wilma_date,SRS6_modis.Date(date_wilma_x3),'days')
-between(irma_date,SRS6_modis.Date(date_irma_x3),'days')
 
 
-%TS7 LAI 8-day
-between(irma_date,TS7_modis.Date(date_irma_x1),'days')
-between(irma_date,TS7_modis.Date(date_irma_x2),'days')
-between(irma_date,TS7_modis.Date(date_irma_x3),'days')
 
 
-%SRS6 Reco days  8-day
-between(wilma_date,SRS6_modis.Date(83),'days')%between(wilma_date,SRS6_modis.Date(date_wilma_x1),'days')
-between(irma_date,SRS6_modis.Date(date_irma_x1),'days')
 
-between(wilma_date,SRS6_modis.Date(82),'days')%between(wilma_date,SRS6_modis.Date(date_wilma_x2),'days')
-between(irma_date,SRS6_modis.Date(date_irma_x2),'days')
+%Temperature betweeen SRS5 and TS7
+%regress(SRS6_24day_TA_dailyave',TS7_24day_TA_dailyave')
+%regression slope of 0.9798
+    
 
-between(wilma_date,SRS6_modis.Date(81),'days')%between(wilma_date,SRS6_modis.Date(date_wilma_x3),'days')
-between(irma_date,SRS6_modis.Date(date_irma_x3),'days')
+%%%% write output tables
 
-
-%SRS6 Amax days  8-day
-between(wilma_date,SRS6_modis.Date(date_wilma_x1),'days')
-between(irma_date,SRS6_modis.Date(date_irma_x1),'days')
-
-between(wilma_date,SRS6_modis.Date(date_wilma_x2),'days')
-between(irma_date,SRS6_modis.Date(date_irma_x2),'days')
-
-between(wilma_date,SRS6_modis.Date(date_wilma_x3),'days')
-between(irma_date,SRS6_modis.Date(date_irma_x3),'days')
+Time = datetime(compose("%d",SRS6_data.Date),'InputFormat','yyyyMMddHHmm');
+SRS6_datatable_flux=timetable(Time,SRS6_data.NEE,'VariableNames',{'NEE'});
+SRS6_datatable_LAI=timetable(SRS6_modis_8day.Date,SRS6_modis_8day.LAIqc,'VariableNames',{'LAI'});
+SRS6_datatable_flux_parms=timetable(SRS6_modis_24day.Date,SRS6_24day_beta_MM(:,1),SRS6_24day_beta_MM(:,2),SRS6_24day_beta_MM(:,3),SRS6_24day_beta_TRC(:,1),SRS6_24day_beta_TRC(:,2),'VariableNames',{'LRC_Reco','LRC_QY','LRC_Amax','TRC_R_base','TRC_temp_sensitivity'});
 
 
+Time = datetime(compose("%d",TS7_data.Date),'InputFormat','yyyyMMddHHmm');
+TS7_datatable_flux=timetable(Time,TS7_data.NEE,'VariableNames',{'NEE'});
+TS7_datatable_LAI=timetable(TS7_modis_8day.Date,TS7_modis_8day.LAIqc,'VariableNames',{'LAI'});
+TS7_datatable_flux_parms=timetable(TS7_modis_24day.Date,TS7_24day_beta_MM(:,1),TS7_24day_beta_MM(:,2),TS7_24day_beta_MM(:,3),TS7_24day_beta_TRC(:,1),TS7_24day_beta_TRC(:,2),'VariableNames',{'LRC_Reco','LRC_QY','LRC_Amax','TRC_R_base','TRC_temp_sensitivity'});
+
+
+SRS6_output = synchronize(rmmissing(SRS6_datatable_flux),ERA5_data_30min,SRS6_datatable_LAI,SRS6_datatable_flux_parms);
+SRS6_output = renamevars(SRS6_output,["ERA5_2T","ERA5_SW_IN"],["TA","SW_IN"]);
+
+TS7_output = synchronize(rmmissing(TS7_datatable_flux),ERA5_data_30min,TS7_datatable_LAI,TS7_datatable_flux_parms);
+TS7_output = renamevars(TS7_output,["ERA5_2T","ERA5_SW_IN"],["TA","SW_IN"]);
+
+
+
+writetimetable(SRS6_output,'SRS6_datatable.csv')
+writetimetable(TS7_output,'TS7_datatable.csv')
 
 
