@@ -3,7 +3,7 @@ rm(list=ls())
 library(terra)
 library(tidyverse)
 
-# Import the new LAI layers: Data was download by two request to the extents are off. Must bring in seprately and join: 
+# Import the new LAI layers: Data was download by two request to the extents are off. Must bring in separately and join: 
 lai.files <- list.files( "/Volumes/MaloneLab/Research/ENP/Everglades_MODIS_LAI_TS/data", pattern="Lai_500m")
 
 setwd("/Volumes/MaloneLab/Research/ENP/Everglades_MODIS_LAI_TS/data")
