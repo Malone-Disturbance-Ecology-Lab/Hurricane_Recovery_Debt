@@ -26,3 +26,28 @@ Estimates light response curve paraments when given temperature and NEE data.
 
 ### NEP_1PredVar_Model.m
 Defines nonrectangular light response function used in Light_Reponse_Function.m.
+
+### 05_Flow_SRS6Fix.R
+Fixes issues with the site fluxes. This script is called prior to the site level debt estimation.
+
+### 05_Flow_TS7Fix.R
+Fixes issues with the site fluxes. This script is called prior to the site level debt estimation.
+
+### 06_Flow_RecoveryDebt_Site.R 
+Calculates the recover debt at the site level
+
+### 06_Flow_LAI_Processing.R 
+processes LAI raster data from Appeears.
+
+### 07_Flow_scaleCparms.R 
+Calculates carbon exchange parameters from LAI.
+
+### 08_Flow_Spatial NEE.R
+Calculates NEE
+
+### 09_Flow_NEE_Tapp.R
+Transforms daily NEE to Annual NEE
+
+### 10_Flow_Recovery Debt_NEE.R
+Calculates the Recovery Debt at the landscape scale
+
